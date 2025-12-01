@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales & Collections Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --primary-blue: #1e40af;
+            --secondary-blue: #3b82f6;
+            --light-blue: #60a5fa;
+            --accent-blue: #1d4ed8;
+            --dark-blue: #1e3a8a;
+            --primary-gradient: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            --secondary-gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+            --success-gradient: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            --warning-gradient: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+            --shadow-light: 0 4px 6px rgba(30, 64, 175, 0.1);
+            --shadow-heavy: 0 8px 25px rgba(30, 64, 175, 0.2);
+            --shadow-blue: 0 10px 30px rgba(59, 130, 246, 0.3);
+        }
+        
+        body {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #bfdbfe 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .hero-section {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 5rem 0;
+            margin-bottom: 3rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-blue);
+        }
+        
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="%23ffffff" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>') repeat;
+            pointer-events: none;
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .feature-card {
+            transition: all 0.3s ease;
+            border: none;
+            box-shadow: var(--shadow-light);
+            border-radius: 15px;
+            background: white;
+            overflow: hidden;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-heavy);
+        }
+        
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--success-gradient);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: #4facfe;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-light);
+        }
+        
+        .upload-area:hover::before {
+            opacity: 0.05;
+        }
+        
+        .upload-area.dragover {
+            border-color: #4facfe;
+            background: rgba(79, 172, 254, 0.1);
+            transform: scale(1.02);
+        }
+        
+        .upload-area.dragover::before {
+            opacity: 0.1;
+        }
+        
+        .btn-primary {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-light);
+            border-radius: 12px;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-blue);
+            background: var(--secondary-gradient);
+            border: none;
+            color: white;
+        }
+        
+        .btn-success {
+            background: var(--success-gradient);
+            border: none;
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-light);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-heavy);
+            background: var(--success-gradient);
+            border: none;
+        }
+        
+        .table {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: var(--shadow-light);
+            border: none;
+        }
+        
+        .table thead th {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.3px;
+            padding: 0.5rem 0.4rem;
+        }
+        
+        .table tbody tr {
+            transition: all 0.2s ease;
+            height: 40px;
+        }
+        
+        .table tbody tr:hover {
+            background-color: rgba(102, 126, 234, 0.05);
+            transform: scale(1.01);
+        }
+        
+        .table tbody td {
+            padding: 0.4rem 0.5rem;
+            border-color: #f8f9fa;
+            vertical-align: middle;
+            height: 40px;
+            line-height: 1.2;
+            white-space: nowrap;
+            font-size: 0.8rem;
+        }
+        
+        .table tbody td:first-child {
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .table-warning {
+            background: var(--warning-gradient) !important;
+            color: black !important;
+        }
+        
+        .table-warning td {
+            border-color: transparent !important;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 20px;
+            box-shadow: var(--shadow-light);
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-blue);
+            transform: translateY(-5px);
+        }
+        
+        .card-header {
+            background: var(--primary-gradient) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 20px 20px 0 0 !important;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+        }
+        
+        .form-control, .form-select {
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+            padding: 12px 15px;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--secondary-blue);
+            box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+        }
+        
+        .alert {
+            border: none;
+            border-radius: 15px;
+            box-shadow: var(--shadow-light);
+        }
+        
+        .text-primary {
+            color: var(--primary-blue) !important;
+        }
+        
+        .text-info {
+            color: var(--secondary-blue) !important;
+        }
+        
+        .bg-info {
+            background: var(--secondary-gradient) !important;
+        }
+        
+        .bg-primary {
+            background: var(--primary-gradient) !important;
+        }
+        
+        .section-divider {
+            height: 3px;
+            background: var(--primary-gradient);
+            border-radius: 2px;
+            margin: 3rem 0;
+        }
+        .upload-icon {
+            font-size: 3rem;
+            color: #6c757d;
+            margin-bottom: 1rem;
+        }
+        .section-divider {
+            border-top: 2px solid #dee2e6;
+            margin: 3rem 0;
+        }
+        
+    </style>
+</head>
+<body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background: var(--primary-gradient);">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-chart-bar me-2"></i>
+                Sales & Collections
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">
+                            <i class="fas fa-home me-1"></i>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/whatsapp_generator">
+                            <i class="fab fa-whatsapp me-1"></i>
+                            WhatsApp Generator
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/vehicle_details">
+                            <i class="fas fa-truck me-1"></i>
+                            Vehicle Details
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dealer_balance">
+                            <i class="fas fa-balance-scale me-1"></i>
+                            Dealer Balance
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container">
+            <div class="hero-content text-center">
+                <h1 class="display-4 fw-bold mb-4">
+                    <i class="fas fa-chart-bar me-3"></i>
+                    Sales & Collections Management
+                </h1>
+                <p class="lead mb-4">Streamline your business operations with our comprehensive dashboard</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-5">
+        <!-- File Upload Section -->
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="display-5 fw-bold text-primary mb-2">
+                    <i class="fas fa-cloud-upload-alt me-3"></i>
+                    Upload Your Files
+                </h2>
+                <p class="lead text-muted mb-5">Upload your sales and collections data to generate comprehensive reports</p>
+            </div>
+        </div>
+
+        <div class="row mb-5">
+            <!-- Sales Upload -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Upload Sales File</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-area" id="salesUploadArea">
+                            <div class="upload-icon">
+                                <i class="fas fa-file-excel"></i>
+                            </div>
+                            <h5 class="fw-bold">Sales Data Upload</h5>
+                            <p class="text-muted mb-3">Click to select or drag & drop Excel file</p>
+                            <small class="text-muted">Supported: .xlsx, .xls • Max size: 10MB</small>
+                        </div>
+                        <input type="file" id="salesFile" accept=".xlsx,.xls" style="display: none;">
+                        <div id="salesStatus" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Collections Upload -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Upload Collections File</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-area" id="collectionsUploadArea">
+                            <div class="upload-icon">
+                                <i class="fas fa-money-bill-wave"></i>
+                            </div>
+                            <h5 class="fw-bold">Collections Data Upload</h5>
+                            <p class="text-muted mb-3">Click to select or drag & drop Excel file</p>
+                            <small class="text-muted">Supported: .xlsx, .xls • Max size: 10MB</small>
+                        </div>
+                        <input type="file" id="collectionsFile" accept=".xlsx,.xls" style="display: none;">
+                        <div id="collectionsStatus" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Alert -->
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>After uploading files, use the Reports section below to generate and view reports.</strong>
+        </div>
+
+        <!-- Section Divider -->
+        <div class="section-divider"></div>
+
+        <!-- Report Generation Section -->
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h2 class="display-5 fw-bold text-primary mb-2">
+                    <i class="fas fa-chart-line me-3"></i>
+                    Generate Reports
+                </h2>
+                <p class="lead text-muted mb-5">Select a date to view detailed sales and collections analysis</p>
+            </div>
+        </div>
+
+        <!-- Report Generation -->
+        <div class="row justify-content-center mb-5">
+            <div class="col-lg-10">
+                <div class="card shadow-lg border-0">
+                    <div class="card-header text-center py-4">
+                        <h4 class="mb-0">
+                            <i class="fas fa-calendar-alt me-3"></i>
+                            Report Generation Center
+                        </h4>
+                    </div>
+                    <div class="card-body p-5">
+
+                        <!-- Period Selection -->
+                        <div class="row g-4 align-items-end">
+                            <div class="col-lg-7">
+                                <label for="reportPeriod" class="form-label fw-bold mb-3">
+                                    <i class="fas fa-calendar-check me-2 text-primary"></i>
+                                    <span id="periodLabel">Select Report Date</span>
+                                </label>
+                                <input type="date" id="reportPeriod" class="form-control form-control-lg" placeholder="Choose a date to generate comprehensive report...">
+                            </div>
+                            <div class="col-lg-5 text-center">
+                                <button id="generateReport" class="btn btn-primary btn-lg px-5 py-3" disabled>
+                                    <i class="fas fa-chart-line me-2"></i>
+                                    Generate Report
+                                </button>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        <span id="generateDescription">Shows today's sales and month-to-date cumulative data</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Report Content -->
+        <div id="reportContent" style="display: none;">
+
+            <!-- Download Button -->
+            <div class="row mb-3">
+                <div class="col-12 text-end">
+                    <button class="btn btn-success btn-lg" onclick="downloadReportAsImage(this)">
+                        <i class="fas fa-download me-2"></i>Download Report as Image
+                    </button>
+                </div>
+            </div>
+
+            <!-- Report Container for Image Capture -->
+            <div id="reportCapture" style="background: white; padding: 20px; border-radius: 10px;">
+
+            <!-- Material-wise Summary (Moved to Top) -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="alert alert-light border-0 shadow-sm" id="reportSummary">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-chart-bar text-primary me-3" style="font-size: 1.5rem;"></i>
+                            <div>
+                                <h6 class="mb-1 fw-bold">Material-wise Summary</h6>
+                                <p class="mb-0 text-muted">Select a date and generate a report to view material-wise analytics.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cumulative Report -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-area me-2"></i>
+                                <span id="cumulativeReportTitle">Sales & Collections Report</span>
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Unified Report Table -->
+                            <div class="table-responsive" id="unifiedReportTable">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th rowspan="2" class="align-middle">Dealer Name</th>
+                                            <th rowspan="2" class="align-middle">Opening Balance</th>
+                                            <th colspan="4" class="text-center" style="background: #10b981; color: white;">Today's Sales</th>
+                                            <th colspan="4" class="text-center" style="background: #6366f1; color: white;">Month To Date Sales</th>
+                                            <th colspan="2" class="text-center bg-warning">Collections</th>
+                                            <th rowspan="2" class="align-middle">Closing Balance</th>
+                                        </tr>
+                                        <tr>
+                                            <th style="background: #d1fae5; color: #065f46;">PPC</th>
+                                            <th style="background: #d1fae5; color: #065f46;">Prem</th>
+                                            <th style="background: #d1fae5; color: #065f46;">OPC</th>
+                                            <th style="background: #10b981; color: white;">Total</th>
+                                            <th style="background: #e0e7ff; color: #3730a3;">PPC</th>
+                                            <th style="background: #e0e7ff; color: #3730a3;">Prem</th>
+                                            <th style="background: #e0e7ff; color: #3730a3;">OPC</th>
+                                            <th style="background: #6366f1; color: white;">Total</th>
+                                            <th class="bg-warning">Today's</th>
+                                            <th class="bg-warning">MTD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="unifiedReportTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            </div><!-- End of reportCapture -->
+        </div>
+    </div>
+
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Processing</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="emergencyCloseModal()"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 id="loadingText">Processing...</h5>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="forceCloseModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize Bootstrap modal
+        const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+        
+        // Download report as image function
+        async function downloadReportAsImage(btn) {
+            const reportElement = document.getElementById('reportCapture');
+            const dateInput = document.getElementById('reportPeriod');
+            const selectedDate = dateInput && dateInput.value ? dateInput.value : new Date().toISOString().split('T')[0];
+            
+            if (!reportElement) {
+                alert('Report not found. Please generate a report first.');
+                return;
+            }
+            
+            // Show loading indicator
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating Image...';
+            btn.disabled = true;
+            
+            try {
+                const canvas = await html2canvas(reportElement, {
+                    scale: 2, // Higher quality
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff',
+                    windowWidth: reportElement.scrollWidth,
+                    windowHeight: reportElement.scrollHeight
+                });
+                
+                // Convert to image and download
+                const link = document.createElement('a');
+                link.download = `Sales_Report_${selectedDate}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                
+                // Show success message
+                btn.innerHTML = '<i class="fas fa-check me-2"></i>Downloaded!';
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error generating image:', error);
+                alert('Error generating image. Please try again.');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+        
+        // Force close modal function
+        function forceCloseModal() {
+            console.log('Force closing modal...');
+            window.modalStartTime = null;
+            
+            try {
+                loadingModal.hide();
+            } catch (e) {
+                console.error('Bootstrap modal hide failed:', e);
+            }
+            
+            const modalElement = document.getElementById('loadingModal');
+            if (modalElement) {
+                modalElement.classList.remove('show', 'fade');
+                modalElement.style.display = 'none !important';
+                modalElement.setAttribute('aria-hidden', 'true');
+                modalElement.removeAttribute('aria-modal');
+                modalElement.removeAttribute('role');
+            }
+            
+            document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+            document.body.removeAttribute('style');
+            
+            // Force immediate DOM update
+            setTimeout(() => {
+                const modal = document.getElementById('loadingModal');
+                if (modal) {
+                    modal.style.display = 'none !important';
+                    modal.style.visibility = 'hidden !important';
+                    modal.style.opacity = '0 !important';
+                }
+                document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+            }, 10);
+        }
+
+        // Emergency modal closer
+        window.emergencyCloseModal = function() {
+            console.log('EMERGENCY MODAL CLOSE');
+            const modal = document.getElementById('loadingModal');
+            if (modal) {
+                modal.style.display = 'none !important';
+                modal.style.visibility = 'hidden !important';
+                modal.classList.remove('show', 'fade', 'd-block');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+            
+            document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+            document.body.removeAttribute('style');
+            window.modalStartTime = null;
+        };
+
+        // File upload handlers
+        document.getElementById('salesUploadArea').addEventListener('click', () => {
+            document.getElementById('salesFile').click();
+        });
+
+        document.getElementById('collectionsUploadArea').addEventListener('click', () => {
+            document.getElementById('collectionsFile').click();
+        });
+
+        document.getElementById('salesFile').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0], 'sales');
+            }
+        });
+
+        document.getElementById('collectionsFile').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0], 'collections');
+            }
+        });
+
+        // Drag and drop handlers
+        ['salesUploadArea', 'collectionsUploadArea'].forEach(id => {
+            const area = document.getElementById(id);
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragover');
+            });
+            area.addEventListener('dragleave', () => {
+                area.classList.remove('dragover');
+            });
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                const type = id.includes('sales') ? 'sales' : 'collections';
+                uploadFile(file, type);
+            });
+        });
+
+        // Upload file function
+        function uploadFile(file, type) {
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const statusDiv = document.getElementById(type + 'Status');
+            statusDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Uploading...</div>';
+
+            document.getElementById('loadingText').textContent = `Uploading ${type} file...`;
+            loadingModal.show();
+            window.modalStartTime = Date.now();
+
+            const modalTimeout = setTimeout(() => {
+                forceCloseModal();
+                statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Upload timeout - please try again</div>';
+            }, 30000);
+
+            fetch(`/upload_${type}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                clearTimeout(modalTimeout);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Multiple modal close attempts with delays
+                forceCloseModal();
+                emergencyCloseModal();
+                
+                setTimeout(() => {
+                    forceCloseModal();
+                    emergencyCloseModal();
+                }, 100);
+                
+                setTimeout(() => {
+                    // Final nuclear option
+                    const modal = document.getElementById('loadingModal');
+                    if (modal) {
+                        modal.style.display = 'none';
+                        modal.classList.remove('show', 'fade', 'd-block');
+                    }
+                    document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                }, 200);
+                
+                if (data.success) {
+                    let detailsHtml = '';
+                    if (type === 'sales') {
+                        detailsHtml = `
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-plus-circle text-success"></i> ${data.new_records} new records<br>
+                                    <i class="fas fa-edit text-warning"></i> ${data.updated_records} updated records<br>
+                                    <i class="fas fa-copy text-secondary"></i> ${data.duplicate_records || 0} duplicates skipped<br>
+                                    <i class="fas fa-file-alt text-info"></i> ${data.total_processed} total processed
+                                </small>
+                            </div>`;
+                    } else {
+                        detailsHtml = `
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-plus-circle text-success"></i> ${data.new_records} new records<br>
+                                    <i class="fas fa-copy text-secondary"></i> ${data.duplicate_records} duplicates skipped<br>
+                                    <i class="fas fa-file-alt text-info"></i> ${data.total_processed} total processed
+                                </small>
+                            </div>`;
+                    }
+                    statusDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check"></i> ${data.message}
+                            ${detailsHtml}
+                        </div>`;
+                    
+                    loadAvailableDates();
+                } else {
+                    statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${data.message}</div>`;
+                }
+            })
+            .catch(error => {
+                clearTimeout(modalTimeout);
+                forceCloseModal();
+                emergencyCloseModal();
+                
+                console.error('Upload error:', error);
+                statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Upload failed: ${error.message}</div>`;
+            });
+        }
+
+        // Load available dates for reports
+        function loadAvailableDates() {
+            fetch('/get_available_dates')
+                .then(response => response.json())
+                .then(data => {
+                    const dateInput = document.getElementById('reportPeriod');
+                    
+                    // Change input type to date for daily reports
+                    dateInput.type = 'date';
+                    dateInput.value = ''; // Clear previous value
+                    
+                    // Set min and max dates based on available data
+                    if (data.dates && data.dates.length > 0) {
+                        const sortedDates = data.dates.sort();
+                        dateInput.min = sortedDates[0];
+                        dateInput.max = sortedDates[sortedDates.length - 1];
+                    }
+                    
+                    // Enable generate button when date is selected
+                    dateInput.addEventListener('change', function() {
+                        document.getElementById('generateReport').disabled = !this.value;
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading dates:', error);
+                });
+        }
+
+        // Load available months for reports
+        function loadAvailableMonths() {
+            fetch('/get_available_months')
+                .then(response => response.json())
+                .then(data => {
+                    const dateInput = document.getElementById('reportPeriod');
+                    
+                    // Change input type to month for better month selection
+                    dateInput.type = 'month';
+                    dateInput.value = ''; // Clear previous value
+                    
+                    // Set min and max months based on available data
+                    if (data.raw_months && data.raw_months.length > 0) {
+                        const sortedMonths = data.raw_months.sort();
+                        dateInput.min = sortedMonths[0];
+                        dateInput.max = sortedMonths[sortedMonths.length - 1];
+                    }
+                    
+                    // Enable generate button when month is selected
+                    dateInput.addEventListener('change', function() {
+                        document.getElementById('generateReport').disabled = !this.value;
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading months:', error);
+                });
+        }
+
+        // Generate report
+        document.getElementById('generateReport').addEventListener('click', () => {
+            const selectedDate = document.getElementById('reportPeriod').value;
+            
+            if (!selectedDate) {
+                alert('Please select a date first');
+                return;
+            }
+
+            document.getElementById('loadingText').textContent = 'Generating report...';
+            loadingModal.show();
+            window.modalStartTime = Date.now();
+
+            const modalTimeout = setTimeout(() => {
+                forceCloseModal();
+                alert('Report generation timeout - please try again');
+            }, 30000);
+
+            // Prepare request body for unified report
+            const requestBody = { type: 'daily', date: selectedDate };
+
+            fetch('/get_report', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => {
+                clearTimeout(modalTimeout);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Report data received, attempting to close modal');
+                
+                // Method 1: Try Bootstrap modal hide
+                try {
+                    if (loadingModal && loadingModal.hide) {
+                        loadingModal.hide();
+                        console.log('Bootstrap modal.hide() called');
+                    }
+                } catch (e) {
+                    console.error('Bootstrap modal hide failed:', e);
+                }
+                
+                // Method 2: Direct CSS override - most aggressive approach
+                const modal = document.getElementById('loadingModal');
+                if (modal) {
+                    console.log('Applying direct CSS override to modal');
+                    modal.style.setProperty('display', 'none', 'important');
+                    modal.style.setProperty('visibility', 'hidden', 'important');
+                    modal.style.setProperty('opacity', '0', 'important');
+                    modal.style.setProperty('z-index', '-9999', 'important');
+                    modal.classList.remove('show', 'fade', 'd-block');
+                    modal.setAttribute('aria-hidden', 'true');
+                    
+                    // Also hide all child elements
+                    const modalDialog = modal.querySelector('.modal-dialog');
+                    const modalContent = modal.querySelector('.modal-content');
+                    const modalBody = modal.querySelector('.modal-body');
+                    
+                    if (modalDialog) modalDialog.style.setProperty('display', 'none', 'important');
+                    if (modalContent) modalContent.style.setProperty('display', 'none', 'important');
+                    if (modalBody) modalBody.style.setProperty('display', 'none', 'important');
+                    
+                    console.log('Applied CSS override to modal and child elements');
+                }
+                
+                // Method 3: Remove all backdrops
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                console.log(`Found ${backdrops.length} modal backdrops to remove`);
+                backdrops.forEach(backdrop => {
+                    backdrop.style.setProperty('display', 'none', 'important');
+                    backdrop.remove();
+                });
+                
+                // Method 4: Reset body
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+                
+                // Method 5: Hide entire modal container as fallback
+                const modalContainer = modal?.parentElement;
+                if (modalContainer && modalContainer.classList.contains('modal')) {
+                    modalContainer.style.setProperty('display', 'none', 'important');
+                }
+                
+                // Method 6: Add CSS rule to document to override everything
+                const style = document.createElement('style');
+                style.textContent = `
+                    #loadingModal, #loadingModal * {
+                        display: none !important;
+                        visibility: hidden !important;
+                        opacity: 0 !important;
+                        z-index: -9999 !important;
+                    }
+                    .modal-backdrop {
+                        display: none !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                console.log('All modal closing methods applied including CSS injection');
+                
+                // Display unified report
+                displayUnifiedReport(data, selectedDate);
+            })
+            .catch(error => {
+                clearTimeout(modalTimeout);
+                forceCloseModal();
+                emergencyCloseModal();
+                
+                console.error('Report generation error:', error);
+                alert('Failed to generate report: ' + error.message);
+            });
+        });
+
+        // Display unified report function
+        function displayUnifiedReport(data, selectedDate) {
+            console.log('Displaying unified report for date:', selectedDate, data);
+            
+            // Show unified table
+            document.getElementById('unifiedReportTable').style.display = 'block';
+            
+            // Summary will be populated after table calculations
+
+            // Populate unified table
+            const tableBody = document.getElementById('unifiedReportTableBody');
+            tableBody.innerHTML = '';
+            
+            // Create maps for quick lookup - using dealer_code as key to avoid duplicates
+            const dailySalesMap = {};
+            const cumulativeSalesMap = {};
+            const cumulativeCollectionsMap = {};
+            const dailyCollectionsMap = {};
+            const dealerNames = {}; // Store dealer names by code
+            
+            // Process daily sales - group by dealer_code only
+            data.sales.forEach(sale => {
+                const key = String(sale.dealer_code);
+                if (!dealerNames[key]) {
+                    dealerNames[key] = sale.dealer_name;
+                }
+                if (!dailySalesMap[key]) {
+                    dailySalesMap[key] = {
+                        dealer_code: sale.dealer_code,
+                        dealer_name: sale.dealer_name,
+                        ppc_quantity: 0,
+                        premium_quantity: 0,
+                        opc_quantity: 0,
+                        total_quantity: 0,
+                        ppc_purchase_value: 0,
+                        premium_purchase_value: 0,
+                        opc_purchase_value: 0,
+                        total_purchase_value: 0
+                    };
+                }
+                // Accumulate quantities and values
+                dailySalesMap[key].ppc_quantity += sale.ppc_quantity || 0;
+                dailySalesMap[key].premium_quantity += sale.premium_quantity || 0;
+                dailySalesMap[key].opc_quantity += sale.opc_quantity || 0;
+                dailySalesMap[key].total_quantity += sale.total_quantity || 0;
+                dailySalesMap[key].ppc_purchase_value += sale.ppc_purchase_value || 0;
+                dailySalesMap[key].premium_purchase_value += sale.premium_purchase_value || 0;
+                dailySalesMap[key].opc_purchase_value += sale.opc_purchase_value || 0;
+                dailySalesMap[key].total_purchase_value += sale.total_purchase_value || 0;
+            });
+            
+            // Process cumulative sales - group by dealer_code only
+            data.cumulative_sales.forEach(sale => {
+                const key = String(sale.dealer_code);
+                if (!dealerNames[key]) {
+                    dealerNames[key] = sale.dealer_name;
+                }
+                if (!cumulativeSalesMap[key]) {
+                    cumulativeSalesMap[key] = {
+                        dealer_code: sale.dealer_code,
+                        dealer_name: sale.dealer_name,
+                        ppc_quantity: 0,
+                        premium_quantity: 0,
+                        opc_quantity: 0,
+                        total_quantity: 0,
+                        ppc_purchase_value: 0,
+                        premium_purchase_value: 0,
+                        opc_purchase_value: 0,
+                        total_purchase_value: 0
+                    };
+                }
+                cumulativeSalesMap[key].ppc_quantity += sale.ppc_quantity || 0;
+                cumulativeSalesMap[key].premium_quantity += sale.premium_quantity || 0;
+                cumulativeSalesMap[key].opc_quantity += sale.opc_quantity || 0;
+                cumulativeSalesMap[key].total_quantity += sale.total_quantity || 0;
+                cumulativeSalesMap[key].ppc_purchase_value += sale.ppc_purchase_value || 0;
+                cumulativeSalesMap[key].premium_purchase_value += sale.premium_purchase_value || 0;
+                cumulativeSalesMap[key].opc_purchase_value += sale.opc_purchase_value || 0;
+                cumulativeSalesMap[key].total_purchase_value += sale.total_purchase_value || 0;
+            });
+            
+            // Process today's collections - group by dealer_code only
+            let unassignedDailyCollections = 0;
+            data.collections.forEach(collection => {
+                // Handle collections without dealer info
+                if (!collection.dealer_code || collection.dealer_code === 0) {
+                    unassignedDailyCollections += collection.amount || 0;
+                } else {
+                    const key = String(collection.dealer_code);
+                    if (!dealerNames[key] && collection.dealer_name) {
+                        dealerNames[key] = collection.dealer_name;
+                    }
+                    if (!dailyCollectionsMap[key]) {
+                        dailyCollectionsMap[key] = 0;
+                    }
+                    dailyCollectionsMap[key] += collection.amount || 0;
+                }
+            });
+            
+            // Process cumulative collections (month-to-date) - group by dealer_code only
+            let unassignedCumulativeCollections = 0;
+            data.cumulative_collections.forEach(collection => {
+                // Handle collections without dealer info
+                if (!collection.dealer_code || collection.dealer_code === 0) {
+                    unassignedCumulativeCollections += collection.total_amount || 0;
+                } else {
+                    const key = String(collection.dealer_code);
+                    if (!dealerNames[key] && collection.dealer_name) {
+                        dealerNames[key] = collection.dealer_name;
+                    }
+                    if (!cumulativeCollectionsMap[key]) {
+                        cumulativeCollectionsMap[key] = 0;
+                    }
+                    cumulativeCollectionsMap[key] += collection.total_amount || 0;
+                }
+            });
+            
+            // Get all unique dealers by dealer_code
+            const allDealers = new Set();
+            [...data.sales, ...data.cumulative_sales, ...data.opening_balances].forEach(item => {
+                if (item.dealer_code) {
+                    allDealers.add(String(item.dealer_code));
+                    if (!dealerNames[String(item.dealer_code)] && item.dealer_name) {
+                        dealerNames[String(item.dealer_code)] = item.dealer_name;
+                    }
+                }
+            });
+            
+            // Create opening balance map - using dealer_code as key
+            const openingBalanceMap = {};
+            data.opening_balances.forEach(balance => {
+                const key = String(balance.dealer_code);
+                if (!openingBalanceMap[key]) {
+                    openingBalanceMap[key] = 0;
+                }
+                openingBalanceMap[key] += balance.opening_balance || 0;
+                if (!dealerNames[key] && balance.dealer_name) {
+                    dealerNames[key] = balance.dealer_name;
+                }
+            });
+            
+            // Generate table rows
+            let totalOpeningBalance = 0;
+            let totalDailySales = 0;
+            let totalCumulativeSales = 0;
+            let totalTodaysCollections = unassignedDailyCollections;  // Start with unassigned collections
+            let totalCumulativeCollections = unassignedCumulativeCollections;  // Start with unassigned collections
+            let totalClosingBalance = 0;
+            
+            // Material quantity totals
+            let totalDailyPPC = 0, totalDailyPremium = 0, totalDailyOPC = 0;
+            let totalCumulativePPC = 0, totalCumulativePremium = 0, totalCumulativeOPC = 0;
+            
+            // Sort by dealer name
+            Array.from(allDealers).sort((a, b) => {
+                const nameA = dealerNames[a] || '';
+                const nameB = dealerNames[b] || '';
+                return nameA.localeCompare(nameB); // Sort alphabetically by name
+            }).forEach(dealerCode => {
+                const dealerName = dealerNames[dealerCode] || `Dealer ${dealerCode}`;
+                
+                // Get data for this dealer using dealer_code as key
+                const dailySale = dailySalesMap[dealerCode] || {};
+                const cumulativeSale = cumulativeSalesMap[dealerCode] || {};
+                const openingBalance = openingBalanceMap[dealerCode] || 0;
+                const todaysCollections = dailyCollectionsMap[dealerCode] || 0;
+                const cumulativeCollections = cumulativeCollectionsMap[dealerCode] || 0;
+                
+                // Calculate closing balance
+                const closingBalance = openingBalance + (cumulativeSale.total_purchase_value || 0) - cumulativeCollections;
+                
+                // Add to totals
+                totalOpeningBalance += openingBalance;
+                totalDailySales += (dailySale.total_purchase_value || 0);
+                totalCumulativeSales += (cumulativeSale.total_purchase_value || 0);
+                totalTodaysCollections += todaysCollections;
+                totalCumulativeCollections += cumulativeCollections;
+                totalClosingBalance += closingBalance;
+                
+                // Add material quantity totals
+                totalDailyPPC += (dailySale.ppc_quantity || 0);
+                totalDailyPremium += (dailySale.premium_quantity || 0);
+                totalDailyOPC += (dailySale.opc_quantity || 0);
+                totalCumulativePPC += (cumulativeSale.ppc_quantity || 0);
+                totalCumulativePremium += (cumulativeSale.premium_quantity || 0);
+                totalCumulativeOPC += (cumulativeSale.opc_quantity || 0);
+                
+                // Calculate total quantities for this dealer
+                const dailyTotalQty = (dailySale.ppc_quantity || 0) + (dailySale.premium_quantity || 0) + (dailySale.opc_quantity || 0);
+                const cumulativeTotalQty = (cumulativeSale.ppc_quantity || 0) + (cumulativeSale.premium_quantity || 0) + (cumulativeSale.opc_quantity || 0);
+                
+                // Create table row
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${dealerName}</strong></td>
+                    <td>₹${openingBalance.toFixed(2)}</td>
+                    <td style="background: #ecfdf5;">${(dailySale.ppc_quantity || 0).toFixed(2)}</td>
+                    <td style="background: #ecfdf5;">${(dailySale.premium_quantity || 0).toFixed(2)}</td>
+                    <td style="background: #ecfdf5;">${(dailySale.opc_quantity || 0).toFixed(2)}</td>
+                    <td style="background: #d1fae5;"><strong>${dailyTotalQty.toFixed(2)}</strong></td>
+                    <td style="background: #eef2ff;">${(cumulativeSale.ppc_quantity || 0).toFixed(2)}</td>
+                    <td style="background: #eef2ff;">${(cumulativeSale.premium_quantity || 0).toFixed(2)}</td>
+                    <td style="background: #eef2ff;">${(cumulativeSale.opc_quantity || 0).toFixed(2)}</td>
+                    <td style="background: #e0e7ff;"><strong>${cumulativeTotalQty.toFixed(2)}</strong></td>
+                    <td class="bg-warning">₹${todaysCollections.toFixed(2)}</td>
+                    <td class="bg-warning">₹${cumulativeCollections.toFixed(2)}</td>
+                    <td class="${closingBalance > 0 ? 'text-danger' : 'text-success'}">₹${closingBalance.toFixed(2)}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            // Calculate total quantities for totals row
+            const totalDailyQty = totalDailyPPC + totalDailyPremium + totalDailyOPC;
+            const totalCumulativeQty = totalCumulativePPC + totalCumulativePremium + totalCumulativeOPC;
+            
+            // Add totals row
+            const totalsRow = document.createElement('tr');
+            totalsRow.style.fontWeight = 'bold';
+            totalsRow.style.background = '#f8fafc';
+            totalsRow.innerHTML = `
+                <td style="background: #1e40af; color: white;"><strong>TOTALS</strong></td>
+                <td style="background: #1e40af; color: white;"><strong>₹${totalOpeningBalance.toFixed(2)}</strong></td>
+                <td style="background: #10b981; color: white;"><strong>${totalDailyPPC.toFixed(2)}</strong></td>
+                <td style="background: #10b981; color: white;"><strong>${totalDailyPremium.toFixed(2)}</strong></td>
+                <td style="background: #10b981; color: white;"><strong>${totalDailyOPC.toFixed(2)}</strong></td>
+                <td style="background: #059669; color: white;"><strong>${totalDailyQty.toFixed(2)}</strong></td>
+                <td style="background: #6366f1; color: white;"><strong>${totalCumulativePPC.toFixed(2)}</strong></td>
+                <td style="background: #6366f1; color: white;"><strong>${totalCumulativePremium.toFixed(2)}</strong></td>
+                <td style="background: #6366f1; color: white;"><strong>${totalCumulativeOPC.toFixed(2)}</strong></td>
+                <td style="background: #4f46e5; color: white;"><strong>${totalCumulativeQty.toFixed(2)}</strong></td>
+                <td style="background: #f59e0b; color: white;"><strong>₹${totalTodaysCollections.toFixed(2)}</strong></td>
+                <td style="background: #d97706; color: white;"><strong>₹${totalCumulativeCollections.toFixed(2)}</strong></td>
+                <td style="background: #1e40af; color: white;"><strong>₹${totalClosingBalance.toFixed(2)}</strong></td>
+            `;
+            tableBody.appendChild(totalsRow);
+            
+            // Generate material-wise summary
+            const summaryDiv = document.getElementById('reportSummary');
+            // Calculate total quantities
+            const totalDailyQuantity = totalDailyPPC + totalDailyPremium + totalDailyOPC;
+            const totalCumulativeQuantity = totalCumulativePPC + totalCumulativePremium + totalCumulativeOPC;
+            
+            summaryDiv.innerHTML = `
+                <div class="text-center mb-3">
+                    <h4 class="text-primary mb-1">📅 Report Date: ${selectedDate}</h4>
+                    <p class="text-muted mb-0">Material-wise Sales & Collections Summary</p>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card border-0 bg-light">
+                            <div class="card-header bg-success text-white text-center">
+                                <h6 class="mb-0"><i class="fas fa-calendar-day me-2"></i>Today's Sales & Collections</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center mb-2">
+                                    <div class="col-3">
+                                        <h6 class="text-primary">${totalDailyPPC.toFixed(2)}</h6>
+                                        <small class="text-muted">PPC</small>
+                                    </div>
+                                    <div class="col-3">
+                                        <h6 class="text-info">${totalDailyPremium.toFixed(2)}</h6>
+                                        <small class="text-muted">Premium</small>
+                                    </div>
+                                    <div class="col-3">
+                                        <h6 class="text-warning">${totalDailyOPC.toFixed(2)}</h6>
+                                        <small class="text-muted">OPC</small>
+                                    </div>
+                                    <div class="col-3">
+                                        <h6 class="text-dark"><strong>${totalDailyQuantity.toFixed(2)}</strong></h6>
+                                        <small class="text-muted">Total Qty</small>
+                                    </div>
+                                </div>
+                                <hr class="my-2">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <h5 class="text-success">₹${totalDailySales.toFixed(2)}</h5>
+                                        <small class="text-muted">Sales Value</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <h5 class="text-info">₹${totalTodaysCollections.toFixed(2)}</h5>
+                                        <small class="text-muted">Collections</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-0 bg-light">
+                            <div class="card-header bg-info text-white text-center">
+                                <h6 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Month-to-Date Sales & Collections</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row text-center mb-2">
+                                    <div class="col-3">
+                                        <h6 class="text-primary">${totalCumulativePPC.toFixed(2)}</h6>
+                                        <small class="text-muted">PPC</small>
+                                    </div>
+                                    <div class="col-3">
+                                        <h6 class="text-info">${totalCumulativePremium.toFixed(2)}</h6>
+                                        <small class="text-muted">Premium</small>
+                                    </div>
+                                    <div class="col-3">
+                                        <h6 class="text-warning">${totalCumulativeOPC.toFixed(2)}</h6>
+                                        <small class="text-muted">OPC</small>
+                                    </div>
+                                    <div class="col-3">
+                                        <h6 class="text-dark"><strong>${totalCumulativeQuantity.toFixed(2)}</strong></h6>
+                                        <small class="text-muted">Total Qty</small>
+                                    </div>
+                                </div>
+                                <hr class="my-2">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <h5 class="text-success">₹${totalCumulativeSales.toFixed(2)}</h5>
+                                        <small class="text-muted">Sales Value</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <h5 class="text-warning">₹${totalCumulativeCollections.toFixed(2)}</h5>
+                                        <small class="text-muted">Collections</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Show report content
+            document.getElementById('reportContent').style.display = 'block';
+        }
+
+        // Initialize page
+        loadAvailableDates();
+
+        // Enable/disable generate button based on period selection
+        document.getElementById('reportPeriod').addEventListener('change', function() {
+            const generateBtn = document.getElementById('generateReport');
+            generateBtn.disabled = !this.value;
+        });
+
+        // Load available dates on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAvailableDates();
+        });
+    </script>
+</body>
+</html>

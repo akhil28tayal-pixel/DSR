@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Message Generator - Sales & Collections</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-blue: #1e40af;
+            --secondary-blue: #3b82f6;
+            --light-blue: #60a5fa;
+            --accent-blue: #1d4ed8;
+            --dark-blue: #1e3a8a;
+            --primary-gradient: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            --secondary-gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+            --shadow-light: 0 4px 6px rgba(30, 64, 175, 0.1);
+            --shadow-heavy: 0 8px 25px rgba(30, 64, 175, 0.2);
+            --shadow-blue: 0 10px 30px rgba(59, 130, 246, 0.3);
+        }
+
+        body {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #bfdbfe 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .hero-section {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 3rem 0;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-blue);
+        }
+
+        .card {
+            border: none;
+            border-radius: 20px;
+            box-shadow: var(--shadow-light);
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-blue);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            background: var(--primary-gradient) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 20px 20px 0 0 !important;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-light);
+            border-radius: 12px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-blue);
+            background: var(--secondary-gradient);
+            border: none;
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            border: none;
+            border-radius: 12px;
+            padding: 10px 20px;
+            font-weight: 600;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #047857 0%, #059669 100%);
+            transform: translateY(-2px);
+            border: none;
+        }
+
+        .form-control, .form-select {
+            border-radius: 12px;
+            border: 2px solid #e5e7eb;
+            padding: 12px 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--secondary-blue);
+            box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+        }
+
+        .dealer-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .dealer-card:hover {
+            border-color: var(--secondary-blue);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .dealer-card.selected {
+            border-color: var(--primary-blue);
+            background: rgba(30, 64, 175, 0.1);
+        }
+
+        .message-preview {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+
+        .copy-button {
+            position: sticky;
+            top: 10px;
+            float: right;
+            z-index: 10;
+        }
+
+        .truck-input {
+            margin-bottom: 10px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner-border {
+            color: var(--primary-blue);
+        }
+
+        .alert {
+            border-radius: 12px;
+            border: none;
+        }
+
+        .text-primary {
+            color: var(--primary-blue) !important;
+        }
+
+        .badge {
+            border-radius: 8px;
+            padding: 6px 12px;
+        }
+
+        .dealer-item:hover {
+            background-color: #f8f9fa !important;
+            border-color: #6c757d !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .dealer-item.selected {
+            background-color: #e3f2fd !important;
+            border-color: #2196f3 !important;
+        }
+
+        .dealer-item.selected:hover {
+            background-color: #e3f2fd !important;
+            border-color: #2196f3 !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background: var(--primary-gradient);">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-chart-bar me-2"></i>
+                Sales & Collections
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="fas fa-home me-1"></i>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/whatsapp_generator">
+                            <i class="fab fa-whatsapp me-1"></i>
+                            WhatsApp Generator
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-12 text-center">
+                    <h1 class="display-5 fw-bold mb-3">
+                        <i class="fab fa-whatsapp me-3"></i>WhatsApp Message Generator
+                    </h1>
+                    <p class="lead">Generate professional billing messages for dealers with invoice details and truck numbers</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="row">
+            <!-- Date Selection -->
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-calendar me-2"></i>Select Date
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="billingDate" class="form-label">Billing Date</label>
+                            <input type="date" class="form-control" id="billingDate" required>
+                        </div>
+                        <button type="button" class="btn btn-primary w-100" onclick="loadDealers()">
+                            <i class="fas fa-search me-2"></i>Find Dealers
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dealer Selection -->
+            <div class="col-md-8 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-users me-2"></i>Select Dealer
+                        <span id="dealerCount" class="badge bg-light text-dark ms-2" style="display: none;"></span>
+                    </div>
+                    <div class="card-body">
+                        <div id="dealerLoading" class="loading">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading dealers...</p>
+                        </div>
+                        
+                        <div id="dealerList" class="row" style="display: none;">
+                            <!-- Dealers will be loaded here -->
+                        </div>
+                        
+                        <div id="noDealers" style="display: none;">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No dealers found for the selected date. Please choose a different date.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Message Preview (Hidden - Using Inline Messages) -->
+        <div class="row" id="messageSection" style="display: none !important;">
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fab fa-whatsapp me-2"></i>WhatsApp Message
+                                <span id="dealerNameDisplay" class="text-muted ms-2" style="display: none;">
+                                    - <strong id="dealerNameText"></strong>
+                                </span>
+                            </div>
+                            <button type="button" class="btn btn-success btn-sm copy-button" onclick="copyMessage()">
+                                <i class="fas fa-copy me-1"></i>Copy Message
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="messageLoading" class="loading">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Generating...</span>
+                            </div>
+                            <p class="mt-2">Generating WhatsApp message...</p>
+                        </div>
+                        
+                        <div id="messagePreview" class="message-preview" style="display: none;">
+                            <!-- Dealer Information Header -->
+                            <div class="dealer-info-header mb-3 p-3 bg-light border-start border-primary border-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="me-3">
+                                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                             style="width: 50px; height: 50px; font-size: 1.2rem; font-weight: bold;">
+                                            <i class="fas fa-user"></i>
+                                        </div>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <h5 class="mb-1 text-primary fw-bold" id="previewDealerName">Dealer Name</h5>
+                                        <div class="d-flex align-items-center text-muted">
+                                            <small class="me-3">
+                                                <i class="fas fa-id-card me-1"></i>
+                                                Code: <span id="previewDealerCode">000000</span>
+                                            </small>
+                                            <small class="me-3">
+                                                <i class="fas fa-calendar me-1"></i>
+                                                Date: <span id="previewBillingDate">DD/MM/YYYY</span>
+                                            </small>
+                                            <small>
+                                                <i class="fas fa-file-invoice me-1"></i>
+                                                <span id="previewInvoiceCount">0</span> Invoice(s)
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- WhatsApp Message Content -->
+                            <div class="message-content p-3 bg-white border rounded" style="font-family: monospace; white-space: pre-wrap; border-left: 4px solid #25D366;">
+                                <div id="messageText">
+                                    <!-- Generated message will appear here -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="messageError" style="display: none;">
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="errorText"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let selectedDealer = null;
+        let selectedDate = null;
+
+        function loadDealers() {
+            const dateInput = document.getElementById('billingDate');
+            const date = dateInput.value;
+            
+            if (!date) {
+                alert('Please select a billing date');
+                return;
+            }
+            
+            selectedDate = date;
+            
+            // Show loading
+            document.getElementById('dealerLoading').style.display = 'block';
+            document.getElementById('dealerList').style.display = 'none';
+            document.getElementById('noDealers').style.display = 'none';
+            document.getElementById('dealerCount').style.display = 'none';
+            
+            // Hide message section and dealer name
+            document.getElementById('messageSection').style.display = 'none';
+            document.getElementById('dealerNameDisplay').style.display = 'none';
+            
+            fetch('/get_dealers_for_date', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ date: date })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('dealerLoading').style.display = 'none';
+                
+                if (data.success && data.dealers.length > 0) {
+                    displayDealers(data.dealers);
+                } else {
+                    document.getElementById('noDealers').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                document.getElementById('dealerLoading').style.display = 'none';
+                alert('Error loading dealers: ' + error.message);
+            });
+        }
+
+        function displayDealers(dealers) {
+            const dealerList = document.getElementById('dealerList');
+            const dealerCount = document.getElementById('dealerCount');
+            
+            dealerList.innerHTML = '';
+            
+            dealers.forEach((dealer, index) => {
+                const dealerRow = document.createElement('div');
+                dealerRow.className = 'col-12 mb-2';
+                
+                // Escape dealer name for safe JavaScript insertion
+                const escapedDealerName = dealer.dealer_name.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                
+                dealerRow.innerHTML = `
+                    <div class="list-group-item list-group-item-action dealer-item p-3 border rounded" 
+                         onclick="selectDealer(${dealer.dealer_code}, '${escapedDealerName}', ${dealer.invoice_count}, ${index})"
+                         style="cursor: pointer; transition: all 0.2s ease; border: 1px solid #dee2e6;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                         style="width: 40px; height: 40px; font-weight: bold;">
+                                        ${index + 1}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1 text-primary fw-bold">${dealer.dealer_name}</h6>
+                                    <small class="text-muted">Code: ${dealer.dealer_code}</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-primary fs-6 px-3 py-2">
+                                    ${dealer.invoice_count} Invoice${dealer.invoice_count > 1 ? 's' : ''}
+                                </span>
+                                <div class="mt-1">
+                                    <i class="fas fa-chevron-right text-muted"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Message Area (Initially Hidden) -->
+                        <div id="messageArea_${index}" class="message-area mt-3" style="display: none;">
+                            <hr class="my-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0 text-success">
+                                    <i class="fab fa-whatsapp me-2"></i>WhatsApp Message
+                                </h6>
+                                <button type="button" class="btn btn-success btn-sm" onclick="copyDealerMessage(${index}); event.stopPropagation();" id="copyBtn_${index}">
+                                    <i class="fas fa-copy me-1"></i>Copy
+                                </button>
+                            </div>
+                            <div id="messageLoading_${index}" class="text-center py-3" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <small class="text-muted ms-2">Generating message...</small>
+                            </div>
+                            <div id="messageContent_${index}" class="message-content p-3 bg-light border rounded" 
+                                 style="font-family: monospace; white-space: pre-wrap; border-left: 4px solid #25D366; display: none;">
+                                <!-- Message will appear here -->
+                            </div>
+                            <div id="messageError_${index}" class="alert alert-danger mt-2" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="errorText_${index}"></span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                dealerList.appendChild(dealerRow);
+            });
+            
+            dealerCount.textContent = `${dealers.length} dealers found`;
+            dealerCount.style.display = 'inline-block';
+            dealerList.style.display = 'block';
+        }
+
+        function selectDealer(dealerCode, dealerName, invoiceCount, dealerIndex) {
+            const messageArea = document.getElementById(`messageArea_${dealerIndex}`);
+            const clickedItem = event.currentTarget;
+            
+            // Check if this dealer is already selected and message is visible
+            if (selectedDealer && selectedDealer.index === dealerIndex && messageArea.style.display === 'block') {
+                // Hide the message area and deselect
+                messageArea.style.display = 'none';
+                clickedItem.classList.remove('selected');
+                clickedItem.style.backgroundColor = '';
+                clickedItem.style.borderColor = '#dee2e6';
+                selectedDealer = null;
+                return;
+            }
+            
+            // Hide all other message areas
+            document.querySelectorAll('.message-area').forEach(area => {
+                area.style.display = 'none';
+            });
+            
+            // Remove previous selection
+            document.querySelectorAll('.dealer-item').forEach(item => {
+                item.classList.remove('selected');
+                item.style.backgroundColor = '';
+                item.style.borderColor = '#dee2e6';
+            });
+            
+            // Add selection to clicked item
+            clickedItem.classList.add('selected');
+            clickedItem.style.backgroundColor = '#e3f2fd';
+            clickedItem.style.borderColor = '#2196f3';
+            
+            selectedDealer = {
+                code: dealerCode,
+                name: dealerName,
+                invoiceCount: invoiceCount,
+                index: dealerIndex
+            };
+            
+            // Show message area for this dealer
+            messageArea.style.display = 'block';
+            
+            // Automatically generate WhatsApp message
+            generateMessageForDealer(dealerIndex);
+        }
+
+        function generateMessageForDealer(dealerIndex) {
+            if (!selectedDealer || !selectedDate) {
+                alert('Please select a date and dealer');
+                return;
+            }
+            
+            // Show loading for this specific dealer
+            document.getElementById(`messageLoading_${dealerIndex}`).style.display = 'block';
+            document.getElementById(`messageContent_${dealerIndex}`).style.display = 'none';
+            document.getElementById(`messageError_${dealerIndex}`).style.display = 'none';
+            
+            // Debug logging
+            console.log('Generating message for:', {
+                dealer_code: selectedDealer.code,
+                dealer_name: selectedDealer.name,
+                date: selectedDate,
+                invoice_count: selectedDealer.invoiceCount
+            });
+            
+            // Generate message with no truck numbers (will use database truck numbers automatically)
+            fetch('/generate_whatsapp_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    dealer_code: selectedDealer.code,
+                    date: selectedDate,
+                    truck_numbers: [] // Empty array - will use database truck numbers
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById(`messageLoading_${dealerIndex}`).style.display = 'none';
+                
+                if (data.success) {
+                    document.getElementById(`messageContent_${dealerIndex}`).style.display = 'block';
+                    document.getElementById(`messageContent_${dealerIndex}`).textContent = data.message;
+                } else {
+                    document.getElementById(`messageError_${dealerIndex}`).style.display = 'block';
+                    document.getElementById(`errorText_${dealerIndex}`).textContent = data.message || 'Failed to generate message';
+                }
+            })
+            .catch(error => {
+                document.getElementById(`messageLoading_${dealerIndex}`).style.display = 'none';
+                document.getElementById(`messageError_${dealerIndex}`).style.display = 'block';
+                document.getElementById(`errorText_${dealerIndex}`).textContent = 'Error generating message: ' + error.message;
+            });
+        }
+        
+        function copyDealerMessage(dealerIndex) {
+            const messageElement = document.getElementById(`messageContent_${dealerIndex}`);
+            const messageText = messageElement.textContent || messageElement.innerText;
+            
+            if (!messageText || messageText.trim() === '') {
+                alert('No message to copy. Please generate a message first.');
+                return;
+            }
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(messageText).then(() => {
+                    showCopySuccessForDealer(dealerIndex);
+                }).catch(err => {
+                    console.error('Clipboard API failed:', err);
+                    fallbackCopyForDealer(messageText, dealerIndex);
+                });
+            } else {
+                // Fallback for older browsers or non-HTTPS
+                fallbackCopyForDealer(messageText, dealerIndex);
+            }
+        }
+        
+        function showCopySuccessForDealer(dealerIndex) {
+            const button = document.getElementById(`copyBtn_${dealerIndex}`);
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                button.classList.remove('btn-success');
+                button.classList.add('btn-info');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('btn-info');
+                    button.classList.add('btn-success');
+                }, 2000);
+            }
+        }
+        
+        function fallbackCopyForDealer(text, dealerIndex) {
+            // Create temporary textarea for fallback copy
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCopySuccessForDealer(dealerIndex);
+                } else {
+                    throw new Error('Copy command failed');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                alert('Copy failed. Please select and copy the message manually.');
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+
+
+        function copyMessage() {
+            const messageTextElement = document.getElementById('messageText');
+            const messageText = messageTextElement.textContent || messageTextElement.innerText;
+            
+            if (!messageText || messageText.trim() === '') {
+                alert('No message to copy. Please generate a message first.');
+                return;
+            }
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(messageText).then(() => {
+                    showCopySuccess();
+                }).catch(err => {
+                    console.error('Clipboard API failed:', err);
+                    fallbackCopy(messageText);
+                });
+            } else {
+                // Fallback for older browsers or non-HTTPS
+                fallbackCopy(messageText);
+            }
+        }
+        
+        function showCopySuccess() {
+            const button = document.querySelector('.copy-button');
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                button.classList.remove('btn-success');
+                button.classList.add('btn-info');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('btn-info');
+                    button.classList.add('btn-success');
+                }, 2000);
+            }
+        }
+        
+        function fallbackCopy(text) {
+            // Create temporary textarea for fallback copy
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCopySuccess();
+                } else {
+                    throw new Error('Copy command failed');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                // Show manual copy dialog
+                showManualCopyDialog(text);
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+        
+        function showManualCopyDialog(text) {
+            // Create modal for manual copy
+            const modal = document.createElement('div');
+            modal.innerHTML = `
+                <div class="modal fade" id="manualCopyModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Copy Message Manually</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Please copy the message manually:</p>
+                                <textarea class="form-control" rows="10" readonly style="font-family: monospace;">${text}</textarea>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            const bootstrapModal = new bootstrap.Modal(document.getElementById('manualCopyModal'));
+            bootstrapModal.show();
+            
+            // Clean up modal when closed
+            document.getElementById('manualCopyModal').addEventListener('hidden.bs.modal', function() {
+                document.body.removeChild(modal);
+            });
+        }
+
+        // Set today's date as default
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('billingDate').value = today;
+        });
+    </script>
+</body>
+</html>

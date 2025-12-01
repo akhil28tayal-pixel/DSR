@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opening Material Balance Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-blue: #1e40af;
+            --secondary-blue: #3b82f6;
+            --light-blue: #60a5fa;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 50%, #93c5fd 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .container {
+            max-width: 1400px;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(30, 64, 175, 0.15);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            padding: 1rem 1.5rem;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            border: none;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            border: none;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            border: none;
+        }
+        
+        .table {
+            font-size: 0.85rem;
+        }
+        
+        .table thead th {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            color: white;
+            border: none;
+            font-size: 0.8rem;
+            padding: 0.75rem 0.5rem;
+        }
+        
+        .table tbody td {
+            vertical-align: middle;
+            padding: 0.5rem;
+        }
+        
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--secondary-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        
+        .summary-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .summary-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-blue);
+        }
+        
+        .match-indicator {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        
+        .match-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .match-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .hidden-notice {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        
+        .input-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-1"><i class="fas fa-balance-scale me-2"></i>Opening Material Balance Management</h2>
+                <p class="text-muted mb-0">Manage dealer opening material balances and pending vehicle unloading</p>
+            </div>
+            <a href="/" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+            </a>
+        </div>
+        
+        <!-- Hidden Page Notice -->
+        <div class="hidden-notice">
+            <i class="fas fa-lock me-2"></i>
+            <strong>Admin Page:</strong> This is a hidden administrative page for managing opening material balances.
+        </div>
+        
+        <!-- Month Selection -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Select Month</label>
+                        <input type="month" id="selectedMonth" class="form-control" value="2025-11">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">&nbsp;</label>
+                        <button class="btn btn-primary d-block" onclick="loadData()">
+                            <i class="fas fa-sync-alt me-2"></i>Load Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="summary-card">
+                    <div class="text-muted small">Total Opening Material Balance</div>
+                    <div class="summary-value" id="totalOpeningBalance">0.00</div>
+                    <div class="small text-muted">Sum of all dealer opening balances</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="summary-card">
+                    <div class="text-muted small">Total Pending Unloading</div>
+                    <div class="summary-value" id="totalPendingUnloading">0.00</div>
+                    <div class="small text-muted">Material in trucks not unloaded</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="summary-card">
+                    <div class="text-muted small">Balance Match Status</div>
+                    <div id="matchStatus" class="match-indicator match-error">
+                        <i class="fas fa-times-circle me-2"></i>Not Matched
+                    </div>
+                    <div class="small text-muted mt-2">Opening balance should equal pending unloading</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Pending Vehicles Section -->
+            <div class="col-lg-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-truck me-2"></i>Pending Vehicle Unloading (Previous Month)
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">Vehicles billed in previous month but not unloaded</p>
+                        
+                        <!-- Add New Vehicle Form -->
+                        <div class="bg-light p-3 rounded mb-3">
+                            <h6 class="mb-3"><i class="fas fa-plus-circle me-2"></i>Add Pending Vehicle</h6>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <input type="text" id="vehicleNumber" class="form-control input-sm" placeholder="Vehicle Number">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="date" id="billingDate" class="form-control input-sm">
+                                </div>
+                                <div class="col-md-4">
+                                    <select id="vehicleDealer" class="form-select input-sm">
+                                        <option value="">Select Dealer</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" id="vehiclePPC" class="form-control input-sm" placeholder="PPC Qty" step="0.01">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" id="vehiclePremium" class="form-control input-sm" placeholder="Premium Qty" step="0.01">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" id="vehicleOPC" class="form-control input-sm" placeholder="OPC Qty" step="0.01">
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-success btn-sm w-100" onclick="addPendingVehicle()">
+                                        <i class="fas fa-plus"></i> Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Pending Vehicles Table -->
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm table-hover">
+                                <thead class="sticky-top">
+                                    <tr>
+                                        <th>Vehicle</th>
+                                        <th>Date</th>
+                                        <th>Dealer</th>
+                                        <th>PPC</th>
+                                        <th>Prem</th>
+                                        <th>OPC</th>
+                                        <th>Total</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pendingVehiclesTable">
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted">No pending vehicles</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="table-light">
+                                    <tr>
+                                        <th colspan="3">Total</th>
+                                        <th id="totalVehiclePPC">0.00</th>
+                                        <th id="totalVehiclePremium">0.00</th>
+                                        <th id="totalVehicleOPC">0.00</th>
+                                        <th id="totalVehicleQty">0.00</th>
+                                        <th></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dealer Opening Balance Section -->
+            <div class="col-lg-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-user-tie me-2"></i>Dealer Opening Material Balance
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">Opening material balance for each dealer for the selected month</p>
+                        
+                        <!-- Add Dealer Balance Form -->
+                        <div class="bg-light p-3 rounded mb-3">
+                            <h6 class="mb-3"><i class="fas fa-plus-circle me-2"></i>Add/Update Dealer Balance</h6>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <select id="balanceDealer" class="form-select input-sm" onchange="toggleCustomDealerInput()">
+                                        <option value="">Select Dealer</option>
+                                        <option value="__INACTIVE__">-- Add Inactive Dealer --</option>
+                                        <option value="__OTHER__">-- Other Dealers (Outside Scope) --</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <button class="btn btn-info btn-sm" onclick="autoFillFromVehicles()">
+                                        <i class="fas fa-magic me-2"></i>Auto-fill from Vehicles
+                                    </button>
+                                </div>
+                                <!-- Custom Dealer Input (hidden by default) -->
+                                <div class="col-12" id="customDealerSection" style="display: none;">
+                                    <div class="row g-2">
+                                        <div class="col-md-4">
+                                            <input type="text" id="customDealerCode" class="form-control input-sm" placeholder="Dealer Code">
+                                        </div>
+                                        <div class="col-md-8">
+                                            <input type="text" id="customDealerName" class="form-control input-sm" placeholder="Dealer Name">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" id="balancePPC" class="form-control input-sm" placeholder="PPC Qty" step="0.01">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" id="balancePremium" class="form-control input-sm" placeholder="Premium Qty" step="0.01">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" id="balanceOPC" class="form-control input-sm" placeholder="OPC Qty" step="0.01">
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-success btn-sm w-100" onclick="saveDealerBalance()">
+                                        <i class="fas fa-save"></i> Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Dealer Balances Table -->
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm table-hover">
+                                <thead class="sticky-top">
+                                    <tr>
+                                        <th>Dealer</th>
+                                        <th>Type</th>
+                                        <th>PPC</th>
+                                        <th>Prem</th>
+                                        <th>OPC</th>
+                                        <th>Total</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dealerBalancesTable">
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted">No dealer balances</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="table-light">
+                                    <tr>
+                                        <th colspan="2">Total</th>
+                                        <th id="totalBalancePPC">0.00</th>
+                                        <th id="totalBalancePremium">0.00</th>
+                                        <th id="totalBalanceOPC">0.00</th>
+                                        <th id="totalBalanceQty">0.00</th>
+                                        <th></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Save All Button -->
+        <div class="text-center mt-3">
+            <button class="btn btn-primary btn-lg px-5" onclick="saveAllData()">
+                <i class="fas fa-save me-2"></i>Save All Changes
+            </button>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let dealers = [];
+        let pendingVehicles = [];
+        let dealerBalances = [];
+        
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDealers();
+            loadData();
+        });
+        
+        // Load dealers list
+        async function loadDealers() {
+            try {
+                const response = await fetch('/get_dealers_list');
+                const data = await response.json();
+                dealers = data.dealers || [];
+                
+                // Populate dealer dropdowns
+                const vehicleDealerSelect = document.getElementById('vehicleDealer');
+                const balanceDealerSelect = document.getElementById('balanceDealer');
+                
+                dealers.forEach(dealer => {
+                    const option1 = new Option(dealer.dealer_name, dealer.dealer_code);
+                    const option2 = new Option(dealer.dealer_name, dealer.dealer_code);
+                    vehicleDealerSelect.add(option1);
+                    balanceDealerSelect.add(option2);
+                });
+            } catch (error) {
+                console.error('Error loading dealers:', error);
+            }
+        }
+        
+        // Load existing data
+        async function loadData() {
+            const monthYear = document.getElementById('selectedMonth').value;
+            
+            try {
+                const response = await fetch('/get_opening_material_balance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ month_year: monthYear })
+                });
+                const data = await response.json();
+                
+                pendingVehicles = data.pending_vehicles || [];
+                dealerBalances = data.dealer_balances || [];
+                
+                renderPendingVehicles();
+                renderDealerBalances();
+                updateSummary();
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+        
+        // Render pending vehicles table
+        function renderPendingVehicles() {
+            const tbody = document.getElementById('pendingVehiclesTable');
+            
+            if (pendingVehicles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No pending vehicles</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            let totalPPC = 0, totalPremium = 0, totalOPC = 0;
+            
+            pendingVehicles.forEach((vehicle, index) => {
+                const total = (vehicle.ppc_qty || 0) + (vehicle.premium_qty || 0) + (vehicle.opc_qty || 0);
+                totalPPC += vehicle.ppc_qty || 0;
+                totalPremium += vehicle.premium_qty || 0;
+                totalOPC += vehicle.opc_qty || 0;
+                
+                const dealerName = getDealerName(vehicle.dealer_code);
+                
+                html += `
+                    <tr>
+                        <td>${vehicle.vehicle_number}</td>
+                        <td>${vehicle.billing_date}</td>
+                        <td title="${dealerName}">${dealerName.substring(0, 15)}${dealerName.length > 15 ? '...' : ''}</td>
+                        <td>${(vehicle.ppc_qty || 0).toFixed(2)}</td>
+                        <td>${(vehicle.premium_qty || 0).toFixed(2)}</td>
+                        <td>${(vehicle.opc_qty || 0).toFixed(2)}</td>
+                        <td><strong>${total.toFixed(2)}</strong></td>
+                        <td>
+                            <button class="btn btn-danger btn-sm py-0 px-1" onclick="deletePendingVehicle(${index})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+            document.getElementById('totalVehiclePPC').textContent = totalPPC.toFixed(2);
+            document.getElementById('totalVehiclePremium').textContent = totalPremium.toFixed(2);
+            document.getElementById('totalVehicleOPC').textContent = totalOPC.toFixed(2);
+            document.getElementById('totalVehicleQty').textContent = (totalPPC + totalPremium + totalOPC).toFixed(2);
+        }
+        
+        // Render dealer balances table
+        function renderDealerBalances() {
+            const tbody = document.getElementById('dealerBalancesTable');
+            
+            if (dealerBalances.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No dealer balances</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            let totalPPC = 0, totalPremium = 0, totalOPC = 0;
+            
+            dealerBalances.forEach((balance, index) => {
+                const total = (balance.ppc_qty || 0) + (balance.premium_qty || 0) + (balance.opc_qty || 0);
+                totalPPC += balance.ppc_qty || 0;
+                totalPremium += balance.premium_qty || 0;
+                totalOPC += balance.opc_qty || 0;
+                
+                const dealerName = balance.dealer_name || getDealerName(balance.dealer_code);
+                const dealerType = balance.dealer_type || 'Active';
+                const typeClass = dealerType === 'Inactive' ? 'text-warning' : (dealerType === 'Other' ? 'text-info' : 'text-success');
+                const typeBadge = `<span class="badge ${dealerType === 'Inactive' ? 'bg-warning text-dark' : (dealerType === 'Other' ? 'bg-info' : 'bg-success')}">${dealerType}</span>`;
+                
+                html += `
+                    <tr>
+                        <td title="${dealerName}">${dealerName.substring(0, 15)}${dealerName.length > 15 ? '...' : ''}</td>
+                        <td>${typeBadge}</td>
+                        <td>${(balance.ppc_qty || 0).toFixed(2)}</td>
+                        <td>${(balance.premium_qty || 0).toFixed(2)}</td>
+                        <td>${(balance.opc_qty || 0).toFixed(2)}</td>
+                        <td><strong>${total.toFixed(2)}</strong></td>
+                        <td>
+                            <button class="btn btn-danger btn-sm py-0 px-1" onclick="deleteDealerBalance(${index})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+            document.getElementById('totalBalancePPC').textContent = totalPPC.toFixed(2);
+            document.getElementById('totalBalancePremium').textContent = totalPremium.toFixed(2);
+            document.getElementById('totalBalanceOPC').textContent = totalOPC.toFixed(2);
+            document.getElementById('totalBalanceQty').textContent = (totalPPC + totalPremium + totalOPC).toFixed(2);
+        }
+        
+        // Toggle custom dealer input visibility
+        function toggleCustomDealerInput() {
+            const select = document.getElementById('balanceDealer');
+            const customSection = document.getElementById('customDealerSection');
+            
+            if (select.value === '__INACTIVE__' || select.value === '__OTHER__') {
+                customSection.style.display = 'block';
+            } else {
+                customSection.style.display = 'none';
+            }
+        }
+        
+        // Get dealer name from code
+        function getDealerName(dealerCode) {
+            const dealer = dealers.find(d => d.dealer_code == dealerCode);
+            return dealer ? dealer.dealer_name : `Dealer ${dealerCode}`;
+        }
+        
+        // Update summary
+        function updateSummary() {
+            let totalVehicleQty = 0;
+            pendingVehicles.forEach(v => {
+                totalVehicleQty += (v.ppc_qty || 0) + (v.premium_qty || 0) + (v.opc_qty || 0);
+            });
+            
+            let totalBalanceQty = 0;
+            dealerBalances.forEach(b => {
+                totalBalanceQty += (b.ppc_qty || 0) + (b.premium_qty || 0) + (b.opc_qty || 0);
+            });
+            
+            document.getElementById('totalOpeningBalance').textContent = totalBalanceQty.toFixed(2);
+            document.getElementById('totalPendingUnloading').textContent = totalVehicleQty.toFixed(2);
+            
+            const matchStatus = document.getElementById('matchStatus');
+            const diff = Math.abs(totalVehicleQty - totalBalanceQty);
+            
+            if (diff < 0.01) {
+                matchStatus.className = 'match-indicator match-success';
+                matchStatus.innerHTML = '<i class="fas fa-check-circle me-2"></i>Matched!';
+            } else {
+                matchStatus.className = 'match-indicator match-error';
+                matchStatus.innerHTML = `<i class="fas fa-times-circle me-2"></i>Difference: ${diff.toFixed(2)}`;
+            }
+        }
+        
+        // Add pending vehicle
+        function addPendingVehicle() {
+            const vehicleNumber = document.getElementById('vehicleNumber').value.trim();
+            const billingDate = document.getElementById('billingDate').value;
+            const dealerCode = document.getElementById('vehicleDealer').value;
+            const ppcQty = parseFloat(document.getElementById('vehiclePPC').value) || 0;
+            const premiumQty = parseFloat(document.getElementById('vehiclePremium').value) || 0;
+            const opcQty = parseFloat(document.getElementById('vehicleOPC').value) || 0;
+            
+            if (!vehicleNumber || !billingDate || !dealerCode) {
+                alert('Please fill in Vehicle Number, Billing Date, and Dealer');
+                return;
+            }
+            
+            if (ppcQty === 0 && premiumQty === 0 && opcQty === 0) {
+                alert('Please enter at least one material quantity');
+                return;
+            }
+            
+            pendingVehicles.push({
+                vehicle_number: vehicleNumber,
+                billing_date: billingDate,
+                dealer_code: dealerCode,
+                ppc_qty: ppcQty,
+                premium_qty: premiumQty,
+                opc_qty: opcQty
+            });
+            
+            // Clear form
+            document.getElementById('vehicleNumber').value = '';
+            document.getElementById('billingDate').value = '';
+            document.getElementById('vehicleDealer').value = '';
+            document.getElementById('vehiclePPC').value = '';
+            document.getElementById('vehiclePremium').value = '';
+            document.getElementById('vehicleOPC').value = '';
+            
+            renderPendingVehicles();
+            updateSummary();
+        }
+        
+        // Delete pending vehicle
+        function deletePendingVehicle(index) {
+            if (confirm('Are you sure you want to delete this vehicle?')) {
+                pendingVehicles.splice(index, 1);
+                renderPendingVehicles();
+                updateSummary();
+            }
+        }
+        
+        // Save dealer balance
+        function saveDealerBalance() {
+            const dealerSelect = document.getElementById('balanceDealer').value;
+            const ppcQty = parseFloat(document.getElementById('balancePPC').value) || 0;
+            const premiumQty = parseFloat(document.getElementById('balancePremium').value) || 0;
+            const opcQty = parseFloat(document.getElementById('balanceOPC').value) || 0;
+            
+            let dealerCode, dealerName, dealerType;
+            
+            if (dealerSelect === '__INACTIVE__' || dealerSelect === '__OTHER__') {
+                // Custom dealer (inactive or other)
+                dealerCode = document.getElementById('customDealerCode').value.trim();
+                dealerName = document.getElementById('customDealerName').value.trim();
+                dealerType = dealerSelect === '__INACTIVE__' ? 'Inactive' : 'Other';
+                
+                if (!dealerCode || !dealerName) {
+                    alert('Please enter both Dealer Code and Dealer Name');
+                    return;
+                }
+            } else if (dealerSelect) {
+                // Active dealer from dropdown
+                dealerCode = dealerSelect;
+                dealerName = getDealerName(dealerCode);
+                dealerType = 'Active';
+            } else {
+                alert('Please select a dealer');
+                return;
+            }
+            
+            // Check if dealer already exists
+            const existingIndex = dealerBalances.findIndex(b => b.dealer_code == dealerCode);
+            
+            if (existingIndex >= 0) {
+                // Update existing
+                dealerBalances[existingIndex].ppc_qty = ppcQty;
+                dealerBalances[existingIndex].premium_qty = premiumQty;
+                dealerBalances[existingIndex].opc_qty = opcQty;
+                dealerBalances[existingIndex].dealer_name = dealerName;
+                dealerBalances[existingIndex].dealer_type = dealerType;
+            } else {
+                // Add new
+                dealerBalances.push({
+                    dealer_code: dealerCode,
+                    dealer_name: dealerName,
+                    dealer_type: dealerType,
+                    ppc_qty: ppcQty,
+                    premium_qty: premiumQty,
+                    opc_qty: opcQty
+                });
+            }
+            
+            // Clear form
+            document.getElementById('balanceDealer').value = '';
+            document.getElementById('balancePPC').value = '';
+            document.getElementById('balancePremium').value = '';
+            document.getElementById('balanceOPC').value = '';
+            document.getElementById('customDealerCode').value = '';
+            document.getElementById('customDealerName').value = '';
+            document.getElementById('customDealerSection').style.display = 'none';
+            
+            renderDealerBalances();
+            updateSummary();
+        }
+        
+        // Delete dealer balance
+        function deleteDealerBalance(index) {
+            if (confirm('Are you sure you want to delete this dealer balance?')) {
+                dealerBalances.splice(index, 1);
+                renderDealerBalances();
+                updateSummary();
+            }
+        }
+        
+        // Auto-fill dealer balances from pending vehicles
+        function autoFillFromVehicles() {
+            if (pendingVehicles.length === 0) {
+                alert('No pending vehicles to calculate from');
+                return;
+            }
+            
+            if (!confirm('This will replace existing dealer balances with calculated values from pending vehicles. Continue?')) {
+                return;
+            }
+            
+            // Group by dealer
+            const dealerTotals = {};
+            pendingVehicles.forEach(vehicle => {
+                if (!dealerTotals[vehicle.dealer_code]) {
+                    dealerTotals[vehicle.dealer_code] = { ppc_qty: 0, premium_qty: 0, opc_qty: 0 };
+                }
+                dealerTotals[vehicle.dealer_code].ppc_qty += vehicle.ppc_qty || 0;
+                dealerTotals[vehicle.dealer_code].premium_qty += vehicle.premium_qty || 0;
+                dealerTotals[vehicle.dealer_code].opc_qty += vehicle.opc_qty || 0;
+            });
+            
+            // Convert to array
+            dealerBalances = Object.entries(dealerTotals).map(([dealerCode, totals]) => ({
+                dealer_code: dealerCode,
+                ppc_qty: totals.ppc_qty,
+                premium_qty: totals.premium_qty,
+                opc_qty: totals.opc_qty
+            }));
+            
+            renderDealerBalances();
+            updateSummary();
+        }
+        
+        // Save all data
+        async function saveAllData() {
+            const monthYear = document.getElementById('selectedMonth').value;
+            
+            try {
+                const response = await fetch('/save_opening_material_balance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        month_year: monthYear,
+                        pending_vehicles: pendingVehicles,
+                        dealer_balances: dealerBalances
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Data saved successfully!');
+                } else {
+                    alert('Error saving data: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error saving data:', error);
+                alert('Error saving data. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>
