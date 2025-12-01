@@ -11,8 +11,10 @@ venv/
 dist/
 build/
 
-# Database files
-*.db
+# Database files (exclude empty/temp databases, keep main one)
+sales_collections.db
+sales_collections_data.db
+!webapp_sales_collections.db
 
 # Uploads folder contents
 uploads/*
