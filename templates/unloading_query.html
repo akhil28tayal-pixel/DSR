@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unloading Query</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .query-card {
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #fff;
+        }
+        .query-card.active {
+            border-color: #0d6efd;
+            box-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
+        }
+        .query-card h5 {
+            color: #495057;
+            margin-bottom: 15px;
+        }
+        .query-card.active h5 {
+            color: #0d6efd;
+        }
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        .summary-card.ppc { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .summary-card.premium { background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%); }
+        .summary-card.opc { background: linear-gradient(135deg, #4776E6 0%, #8E54E9 100%); }
+        .summary-card h3 { margin: 0; font-size: 1.8rem; }
+        .summary-card small { opacity: 0.9; }
+        .pagination-info {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .btn-query {
+            width: 100%;
+            padding: 10px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/"><i class="bi bi-box-seam me-2"></i>Sales & Collections</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/vehicle_details"><i class="bi bi-truck me-1"></i>Vehicles</a>
+                <a class="nav-link" href="/dealer_balance"><i class="bi bi-people me-1"></i>Dealer Balance</a>
+                <a class="nav-link active" href="/unloading_query"><i class="bi bi-search me-1"></i>Unloading Query</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h2 class="mb-4"><i class="bi bi-search me-2"></i>Unloading Query</h2>
+        
+        <!-- Query Type Selection -->
+        <div class="row mb-4">
+            <!-- Date-wise Query -->
+            <div class="col-md-4">
+                <div class="query-card" id="dateQueryCard">
+                    <h5><i class="bi bi-calendar3 me-2"></i>Date-wise Query</h5>
+                    <div class="mb-3">
+                        <label class="form-label">From Date</label>
+                        <input type="date" class="form-control" id="dateFrom">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">To Date</label>
+                        <input type="date" class="form-control" id="dateTo">
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary btn-query flex-grow-1" onclick="queryByDate()">
+                            <i class="bi bi-search me-1"></i>Query
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="clearDateQuery()" title="Clear">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Truck-wise Query -->
+            <div class="col-md-4">
+                <div class="query-card" id="truckQueryCard">
+                    <h5><i class="bi bi-truck me-2"></i>Truck-wise Query</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Truck Number</label>
+                        <input type="text" class="form-control" id="truckNumber" placeholder="Enter truck number">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range (Optional)</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="date" class="form-control form-control-sm" id="truckDateFrom" placeholder="From">
+                            </div>
+                            <div class="col-6">
+                                <input type="date" class="form-control form-control-sm" id="truckDateTo" placeholder="To">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-success btn-query flex-grow-1" onclick="queryByTruck()">
+                            <i class="bi bi-search me-1"></i>Query
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="clearTruckQuery()" title="Clear">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dealer-wise Query -->
+            <div class="col-md-4">
+                <div class="query-card" id="dealerQueryCard">
+                    <h5><i class="bi bi-person me-2"></i>Dealer-wise Query</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Dealer</label>
+                        <select class="form-select" id="dealerSelect">
+                            <option value="">Select Dealer</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range (Optional)</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="date" class="form-control form-control-sm" id="dealerDateFrom">
+                            </div>
+                            <div class="col-6">
+                                <input type="date" class="form-control form-control-sm" id="dealerDateTo">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-warning btn-query flex-grow-1" onclick="queryByDealer()">
+                            <i class="bi bi-search me-1"></i>Query
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="clearDealerQuery()" title="Clear">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div id="resultsSection" style="display: none;">
+            <!-- Summary Cards -->
+            <div class="row mb-4" id="summaryCards">
+                <div class="col-md-3">
+                    <div class="summary-card">
+                        <small>Total Unloaded</small>
+                        <h3 id="totalUnloaded">0 MT</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-card ppc">
+                        <small>PPC</small>
+                        <h3 id="totalPpc">0 MT</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-card premium">
+                        <small>Premium</small>
+                        <h3 id="totalPremium">0 MT</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-card opc">
+                        <small>OPC</small>
+                        <h3 id="totalOpc">0 MT</h3>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Query Info -->
+            <div class="alert alert-info mb-3" id="queryInfo"></div>
+            
+            <!-- Results Table -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-table me-2"></i>Results (<span id="recordCount">0</span> records)</span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="exportToExcel()">
+                        <i class="bi bi-download me-1"></i>Export Excel
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-striped table-hover mb-0" id="resultsTable">
+                        <thead class="table-dark">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Truck</th>
+                                    <th>Dealer</th>
+                                    <th>Point</th>
+                                    <th class="text-end">PPC</th>
+                                    <th class="text-end">Premium</th>
+                                    <th class="text-end">OPC</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsBody">
+                            </tbody>
+                            <tfoot class="table-secondary" id="resultsTfoot">
+                        </tfoot>
+                    </table>
+                </div>
+                <!-- Pagination -->
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <div class="pagination-info">
+                        Showing <span id="showingFrom">0</span>-<span id="showingTo">0</span> of <span id="totalRecords">0</span> records
+                    </div>
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0" id="pagination">
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        
+        <!-- No Results -->
+        <div id="noResults" style="display: none;" class="text-center py-5">
+            <i class="bi bi-inbox display-1 text-muted"></i>
+            <p class="text-muted mt-3">No unloading records found for the selected criteria</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentResults = [];
+        let currentPage = 1;
+        const rowsPerPage = 20;
+        let currentQueryInfo = '';
+        
+        // Set default dates
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+            
+            document.getElementById('dateFrom').value = monthStart;
+            document.getElementById('dateTo').value = today;
+            
+            loadDealers();
+        });
+        
+        // Load dealers for dropdown
+        async function loadDealers() {
+            try {
+                const response = await fetch('/get_dealers_list');
+                const data = await response.json();
+                
+                const select = document.getElementById('dealerSelect');
+                if (data.dealers && data.dealers.length > 0) {
+                    data.dealers.forEach(dealer => {
+                        const option = document.createElement('option');
+                        option.value = dealer.dealer_code;
+                        option.textContent = `${dealer.dealer_name} (${dealer.dealer_code})`;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading dealers:', error);
+            }
+        }
+        
+        // Clear functions
+        function clearDateQuery() {
+            const today = new Date().toISOString().split('T')[0];
+            const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+            document.getElementById('dateFrom').value = monthStart;
+            document.getElementById('dateTo').value = today;
+            clearResults();
+        }
+        
+        function clearTruckQuery() {
+            document.getElementById('truckNumber').value = '';
+            document.getElementById('truckDateFrom').value = '';
+            document.getElementById('truckDateTo').value = '';
+            clearResults();
+        }
+        
+        function clearDealerQuery() {
+            document.getElementById('dealerSelect').value = '';
+            document.getElementById('dealerDateFrom').value = '';
+            document.getElementById('dealerDateTo').value = '';
+            clearResults();
+        }
+        
+        function clearResults() {
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('noResults').style.display = 'none';
+            document.querySelectorAll('.query-card').forEach(card => card.classList.remove('active'));
+            currentResults = [];
+        }
+        
+        // Set active query card
+        function setActiveCard(cardId) {
+            document.querySelectorAll('.query-card').forEach(card => card.classList.remove('active'));
+            document.getElementById(cardId).classList.add('active');
+        }
+        
+        // Query by Date
+        async function queryByDate() {
+            setActiveCard('dateQueryCard');
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate = document.getElementById('dateTo').value;
+            
+            if (!fromDate || !toDate) {
+                alert('Please select both From and To dates');
+                return;
+            }
+            
+            await executeQuery({
+                query_type: 'date',
+                from_date: fromDate,
+                to_date: toDate
+            }, `Date Range: ${fromDate} to ${toDate}`);
+        }
+        
+        // Query by Truck
+        async function queryByTruck() {
+            setActiveCard('truckQueryCard');
+            const truckNumber = document.getElementById('truckNumber').value.trim();
+            
+            if (!truckNumber) {
+                alert('Please enter a truck number');
+                return;
+            }
+            
+            const params = {
+                query_type: 'truck',
+                truck_number: truckNumber
+            };
+            
+            const fromDate = document.getElementById('truckDateFrom').value;
+            const toDate = document.getElementById('truckDateTo').value;
+            if (fromDate) params.from_date = fromDate;
+            if (toDate) params.to_date = toDate;
+            
+            let info = `Truck: ${truckNumber}`;
+            if (fromDate || toDate) {
+                info += ` (${fromDate || 'Start'} to ${toDate || 'End'})`;
+            }
+            
+            await executeQuery(params, info);
+        }
+        
+        // Query by Dealer
+        async function queryByDealer() {
+            setActiveCard('dealerQueryCard');
+            const dealerCode = document.getElementById('dealerSelect').value;
+            const dealerText = document.getElementById('dealerSelect').selectedOptions[0]?.text || '';
+            
+            if (!dealerCode) {
+                alert('Please select a dealer');
+                return;
+            }
+            
+            const params = {
+                query_type: 'dealer',
+                dealer_code: dealerCode
+            };
+            
+            const fromDate = document.getElementById('dealerDateFrom').value;
+            const toDate = document.getElementById('dealerDateTo').value;
+            if (fromDate) params.from_date = fromDate;
+            if (toDate) params.to_date = toDate;
+            
+            let info = `Dealer: ${dealerText}`;
+            if (fromDate || toDate) {
+                info += ` (${fromDate || 'Start'} to ${toDate || 'End'})`;
+            }
+            
+            await executeQuery(params, info);
+        }
+        
+        // Execute query
+        async function executeQuery(params, queryInfo) {
+            try {
+                const response = await fetch('/api/unloading_query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentResults = data.records;
+                    displayResults(data, queryInfo);
+                } else {
+                    alert('Error: ' + (data.error || 'Query failed'));
+                }
+            } catch (error) {
+                console.error('Query error:', error);
+                alert('Error executing query');
+            }
+        }
+        
+        // Display results
+        function displayResults(data, queryInfo) {
+            const records = data.records || [];
+            const summary = data.summary || {};
+            
+            if (records.length === 0) {
+                document.getElementById('resultsSection').style.display = 'none';
+                document.getElementById('noResults').style.display = 'block';
+                return;
+            }
+            
+            document.getElementById('noResults').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            // Update summary
+            document.getElementById('totalUnloaded').textContent = (summary.total || 0).toFixed(2) + ' MT';
+            document.getElementById('totalPpc').textContent = (summary.ppc || 0).toFixed(2) + ' MT';
+            document.getElementById('totalPremium').textContent = (summary.premium || 0).toFixed(2) + ' MT';
+            document.getElementById('totalOpc').textContent = (summary.opc || 0).toFixed(2) + ' MT';
+            
+            // Update query info
+            currentQueryInfo = queryInfo;
+            document.getElementById('queryInfo').innerHTML = `<i class="bi bi-info-circle me-2"></i><strong>Query:</strong> ${queryInfo}`;
+            document.getElementById('recordCount').textContent = records.length;
+            
+            // Reset to page 1 and render
+            currentPage = 1;
+            renderPage();
+        }
+        
+        // Render current page
+        function renderPage() {
+            const totalRecords = currentResults.length;
+            const totalPages = Math.ceil(totalRecords / rowsPerPage);
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = Math.min(startIndex + rowsPerPage, totalRecords);
+            const pageRecords = currentResults.slice(startIndex, endIndex);
+            
+            // Update pagination info
+            document.getElementById('showingFrom').textContent = totalRecords > 0 ? startIndex + 1 : 0;
+            document.getElementById('showingTo').textContent = endIndex;
+            document.getElementById('totalRecords').textContent = totalRecords;
+            
+            // Build table rows
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = pageRecords.map(r => `
+                <tr>
+                    <td>${r.unloading_date}</td>
+                    <td><strong>${r.truck_number}</strong></td>
+                    <td>${r.unloading_dealer}${r.is_other_dealer ? ' <span class="badge bg-warning">Other</span>' : ''}</td>
+                    <td>${r.unloading_point || '-'}</td>
+                    <td class="text-end">${(r.ppc_unloaded || 0).toFixed(2)}</td>
+                    <td class="text-end">${(r.premium_unloaded || 0).toFixed(2)}</td>
+                    <td class="text-end">${(r.opc_unloaded || 0).toFixed(2)}</td>
+                    <td class="text-end"><strong>${(r.unloaded_quantity || 0).toFixed(2)}</strong></td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteUnloading(${r.id}, '${r.unloading_dealer}', ${r.unloaded_quantity})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+            
+            // Calculate page totals
+            let pagePpc = 0, pagePremium = 0, pageOpc = 0, pageTotal = 0;
+            pageRecords.forEach(r => {
+                pagePpc += r.ppc_unloaded || 0;
+                pagePremium += r.premium_unloaded || 0;
+                pageOpc += r.opc_unloaded || 0;
+                pageTotal += r.unloaded_quantity || 0;
+            });
+            
+            // Build footer with page totals
+            const tfoot = document.getElementById('resultsTfoot');
+            tfoot.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-end"><strong>Page Total:</strong></td>
+                    <td class="text-end"><strong>${pagePpc.toFixed(2)}</strong></td>
+                    <td class="text-end"><strong>${pagePremium.toFixed(2)}</strong></td>
+                    <td class="text-end"><strong>${pageOpc.toFixed(2)}</strong></td>
+                    <td class="text-end"><strong>${pageTotal.toFixed(2)}</strong></td>
+                    <td></td>
+                </tr>
+            `;
+            
+            // Build pagination
+            renderPagination(totalPages);
+        }
+        
+        // Render pagination controls
+        function renderPagination(totalPages) {
+            const pagination = document.getElementById('pagination');
+            let html = '';
+            
+            // Previous button
+            html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="goToPage(${currentPage - 1}); return false;">«</a>
+            </li>`;
+            
+            // Page numbers
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+            }
+            
+            if (startPage > 1) {
+                html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(1); return false;">1</a></li>`;
+                if (startPage > 2) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>
+                </li>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${totalPages}); return false;">${totalPages}</a></li>`;
+            }
+            
+            // Next button
+            html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="goToPage(${currentPage + 1}); return false;">»</a>
+            </li>`;
+            
+            pagination.innerHTML = html;
+        }
+        
+        // Go to specific page
+        function goToPage(page) {
+            const totalPages = Math.ceil(currentResults.length / rowsPerPage);
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            renderPage();
+        }
+        
+        // Delete unloading
+        async function deleteUnloading(id, dealer, qty) {
+            if (!confirm(`Delete unloading of ${qty.toFixed(2)} MT for ${dealer}?`)) return;
+            
+            try {
+                const response = await fetch(`/delete_unloading/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Deleted successfully');
+                    // Re-run the last query
+                    document.querySelector('.query-card.active button').click();
+                } else {
+                    alert('Error: ' + (data.error || 'Delete failed'));
+                }
+            } catch (error) {
+                alert('Error deleting record');
+            }
+        }
+        
+        // Export to Excel
+        function exportToExcel() {
+            if (!currentResults.length) {
+                alert('No data to export');
+                return;
+            }
+            
+            let csv = 'Date,Truck,Dealer,Point,PPC,Premium,OPC,Total\n';
+            currentResults.forEach(r => {
+                csv += `${r.unloading_date},${r.truck_number},"${r.unloading_dealer}","${r.unloading_point || ''}",${r.ppc_unloaded || 0},${r.premium_unloaded || 0},${r.opc_unloaded || 0},${r.unloaded_quantity || 0}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'unloading_query_' + new Date().toISOString().split('T')[0] + '.csv';
+            a.click();
+        }
+    </script>
+</body>
+</html>

@@ -182,6 +182,46 @@
             background-color: #e3f2fd !important;
             border-color: #2196f3 !important;
         }
+
+        /* Tab Styling */
+        .nav-tabs {
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 12px 12px 0 0;
+            padding: 12px 24px;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.3s ease;
+            margin-right: 4px;
+        }
+
+        .nav-tabs .nav-link:hover {
+            color: var(--primary-blue);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .nav-tabs .nav-link.active {
+            color: white;
+            background: var(--primary-gradient);
+            border: none;
+        }
+
+        #unloading-tab.active {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+        }
+
+        .unloading-dealer-item.selected {
+            background-color: #d1fae5 !important;
+            border-color: #10b981 !important;
+        }
+
+        .unloading-dealer-item.selected:hover {
+            background-color: #d1fae5 !important;
+            border-color: #10b981 !important;
+        }
     </style>
 </head>
 <body>
@@ -222,55 +262,128 @@
                     <h1 class="display-5 fw-bold mb-3">
                         <i class="fab fa-whatsapp me-3"></i>WhatsApp Message Generator
                     </h1>
-                    <p class="lead">Generate professional billing messages for dealers with invoice details and truck numbers</p>
+                    <p class="lead">Generate professional messages for dealers - Billing or Unloading details</p>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="container">
-        <div class="row">
-            <!-- Date Selection -->
-            <div class="col-md-4 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="fas fa-calendar me-2"></i>Select Date
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label for="billingDate" class="form-label">Billing Date</label>
-                            <input type="date" class="form-control" id="billingDate" required>
+        <!-- Tab Navigation -->
+        <ul class="nav nav-tabs mb-4" id="generatorTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="billing-tab" data-bs-toggle="tab" data-bs-target="#billing-content" 
+                        type="button" role="tab" aria-controls="billing-content" aria-selected="true">
+                    <i class="fas fa-file-invoice me-2"></i>Billing Message
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="unloading-tab" data-bs-toggle="tab" data-bs-target="#unloading-content" 
+                        type="button" role="tab" aria-controls="unloading-content" aria-selected="false">
+                    <i class="fas fa-truck-loading me-2"></i>Unloading Message
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="generatorTabContent">
+            <!-- Billing Tab Content -->
+            <div class="tab-pane fade show active" id="billing-content" role="tabpanel" aria-labelledby="billing-tab">
+                <div class="row">
+                    <!-- Date Selection -->
+                    <div class="col-md-4 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-calendar me-2"></i>Select Date
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="billingDate" class="form-label">Billing Date</label>
+                                    <input type="date" class="form-control" id="billingDate" required>
+                                </div>
+                                <button type="button" class="btn btn-primary w-100" onclick="loadDealers()">
+                                    <i class="fas fa-search me-2"></i>Find Dealers
+                                </button>
+                            </div>
                         </div>
-                        <button type="button" class="btn btn-primary w-100" onclick="loadDealers()">
-                            <i class="fas fa-search me-2"></i>Find Dealers
-                        </button>
+                    </div>
+
+                    <!-- Dealer Selection -->
+                    <div class="col-md-8 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-users me-2"></i>Select Dealer
+                                <span id="dealerCount" class="badge bg-light text-dark ms-2" style="display: none;"></span>
+                            </div>
+                            <div class="card-body">
+                                <div id="dealerLoading" class="loading">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading dealers...</p>
+                                </div>
+                                
+                                <div id="dealerList" class="row" style="display: none;">
+                                    <!-- Dealers will be loaded here -->
+                                </div>
+                                
+                                <div id="noDealers" style="display: none;">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        No dealers found for the selected date. Please choose a different date.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Dealer Selection -->
-            <div class="col-md-8 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="fas fa-users me-2"></i>Select Dealer
-                        <span id="dealerCount" class="badge bg-light text-dark ms-2" style="display: none;"></span>
-                    </div>
-                    <div class="card-body">
-                        <div id="dealerLoading" class="loading">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Loading...</span>
+            <!-- Unloading Tab Content -->
+            <div class="tab-pane fade" id="unloading-content" role="tabpanel" aria-labelledby="unloading-tab">
+                <div class="row">
+                    <!-- Date Selection for Unloading -->
+                    <div class="col-md-4 mb-4">
+                        <div class="card">
+                            <div class="card-header" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;">
+                                <i class="fas fa-calendar me-2"></i>Select Date
                             </div>
-                            <p class="mt-2">Loading dealers...</p>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="unloadingDate" class="form-label">Unloading Date</label>
+                                    <input type="date" class="form-control" id="unloadingDate" required>
+                                </div>
+                                <button type="button" class="btn btn-success w-100" onclick="loadUnloadingDealers()">
+                                    <i class="fas fa-search me-2"></i>Find Dealers
+                                </button>
+                            </div>
                         </div>
-                        
-                        <div id="dealerList" class="row" style="display: none;">
-                            <!-- Dealers will be loaded here -->
-                        </div>
-                        
-                        <div id="noDealers" style="display: none;">
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle me-2"></i>
-                                No dealers found for the selected date. Please choose a different date.
+                    </div>
+
+                    <!-- Dealer Selection for Unloading -->
+                    <div class="col-md-8 mb-4">
+                        <div class="card">
+                            <div class="card-header" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;">
+                                <i class="fas fa-users me-2"></i>Select Dealer
+                                <span id="unloadingDealerCount" class="badge bg-light text-dark ms-2" style="display: none;"></span>
+                            </div>
+                            <div class="card-body">
+                                <div id="unloadingDealerLoading" class="loading">
+                                    <div class="spinner-border text-success" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading dealers...</p>
+                                </div>
+                                
+                                <div id="unloadingDealerList" class="row" style="display: none;">
+                                    <!-- Dealers will be loaded here -->
+                                </div>
+                                
+                                <div id="noUnloadingDealers" style="display: none;">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        No dealers with unloading found for the selected date. Please choose a different date.
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -744,7 +857,278 @@
         document.addEventListener('DOMContentLoaded', function() {
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('billingDate').value = today;
+            document.getElementById('unloadingDate').value = today;
         });
+
+        // ============== Unloading Tab Functions ==============
+        let selectedUnloadingDealer = null;
+        let selectedUnloadingDate = null;
+
+        function loadUnloadingDealers() {
+            const dateInput = document.getElementById('unloadingDate');
+            const date = dateInput.value;
+            
+            if (!date) {
+                alert('Please select an unloading date');
+                return;
+            }
+            
+            selectedUnloadingDate = date;
+            
+            // Show loading
+            document.getElementById('unloadingDealerLoading').style.display = 'block';
+            document.getElementById('unloadingDealerList').style.display = 'none';
+            document.getElementById('noUnloadingDealers').style.display = 'none';
+            document.getElementById('unloadingDealerCount').style.display = 'none';
+            
+            fetch('/get_dealers_for_unloading_date', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ date: date })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('unloadingDealerLoading').style.display = 'none';
+                
+                if (data.success && data.dealers.length > 0) {
+                    displayUnloadingDealers(data.dealers);
+                } else {
+                    document.getElementById('noUnloadingDealers').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                document.getElementById('unloadingDealerLoading').style.display = 'none';
+                alert('Error loading dealers: ' + error.message);
+            });
+        }
+
+        function displayUnloadingDealers(dealers) {
+            const dealerList = document.getElementById('unloadingDealerList');
+            const dealerCount = document.getElementById('unloadingDealerCount');
+            
+            dealerList.innerHTML = '';
+            
+            dealers.forEach((dealer, index) => {
+                const dealerRow = document.createElement('div');
+                dealerRow.className = 'col-12 mb-2';
+                
+                const escapedDealerName = dealer.dealer_name.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                const totalQty = dealer.total_qty.toFixed(2);
+                const totalBags = Math.round(dealer.total_qty * 20);
+                
+                dealerRow.innerHTML = `
+                    <div class="list-group-item list-group-item-action dealer-item p-3 border rounded unloading-dealer-item" 
+                         onclick="selectUnloadingDealer('${dealer.dealer_code}', '${escapedDealerName}', ${dealer.unloading_count}, ${index})"
+                         style="cursor: pointer; transition: all 0.2s ease; border: 1px solid #dee2e6;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                         style="width: 40px; height: 40px; font-weight: bold;">
+                                        ${index + 1}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1 text-success fw-bold">${dealer.dealer_name}</h6>
+                                    <small class="text-muted">Code: ${dealer.dealer_code} | ${totalQty} MT (${totalBags} bags)</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-success fs-6 px-3 py-2">
+                                    ${dealer.unloading_count} Unloading${dealer.unloading_count > 1 ? 's' : ''}
+                                </span>
+                                <div class="mt-1">
+                                    <i class="fas fa-chevron-right text-muted"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Message Area (Initially Hidden) -->
+                        <div id="unloadingMessageArea_${index}" class="message-area mt-3" style="display: none;">
+                            <hr class="my-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0 text-success">
+                                    <i class="fab fa-whatsapp me-2"></i>WhatsApp Message
+                                </h6>
+                                <button type="button" class="btn btn-success btn-sm" onclick="copyUnloadingMessage(${index}); event.stopPropagation();" id="unloadingCopyBtn_${index}">
+                                    <i class="fas fa-copy me-1"></i>Copy
+                                </button>
+                            </div>
+                            <div id="unloadingMessageLoading_${index}" class="text-center py-3" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-success" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <small class="text-muted ms-2">Generating message...</small>
+                            </div>
+                            <div id="unloadingMessageContent_${index}" class="message-content p-3 bg-light border rounded" 
+                                 style="font-family: monospace; white-space: pre-wrap; border-left: 4px solid #25D366; display: none;">
+                                <!-- Message will appear here -->
+                            </div>
+                            <div id="unloadingMessageError_${index}" class="alert alert-danger mt-2" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="unloadingErrorText_${index}"></span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                dealerList.appendChild(dealerRow);
+            });
+            
+            dealerCount.textContent = `${dealers.length} dealers found`;
+            dealerCount.style.display = 'inline-block';
+            dealerList.style.display = 'block';
+        }
+
+        function selectUnloadingDealer(dealerCode, dealerName, unloadingCount, dealerIndex) {
+            const messageArea = document.getElementById(`unloadingMessageArea_${dealerIndex}`);
+            const clickedItem = event.currentTarget;
+            
+            // Check if this dealer is already selected and message is visible
+            if (selectedUnloadingDealer && selectedUnloadingDealer.index === dealerIndex && messageArea.style.display === 'block') {
+                // Hide the message area and deselect
+                messageArea.style.display = 'none';
+                clickedItem.classList.remove('selected');
+                clickedItem.style.backgroundColor = '';
+                clickedItem.style.borderColor = '#dee2e6';
+                selectedUnloadingDealer = null;
+                return;
+            }
+            
+            // Hide all other message areas
+            document.querySelectorAll('#unloading-content .message-area').forEach(area => {
+                area.style.display = 'none';
+            });
+            
+            // Remove previous selection
+            document.querySelectorAll('.unloading-dealer-item').forEach(item => {
+                item.classList.remove('selected');
+                item.style.backgroundColor = '';
+                item.style.borderColor = '#dee2e6';
+            });
+            
+            // Add selection to clicked item
+            clickedItem.classList.add('selected');
+            clickedItem.style.backgroundColor = '#d1fae5';
+            clickedItem.style.borderColor = '#10b981';
+            
+            selectedUnloadingDealer = {
+                code: dealerCode,
+                name: dealerName,
+                unloadingCount: unloadingCount,
+                index: dealerIndex
+            };
+            
+            // Show message area for this dealer
+            messageArea.style.display = 'block';
+            
+            // Automatically generate WhatsApp message
+            generateUnloadingMessage(dealerIndex);
+        }
+
+        function generateUnloadingMessage(dealerIndex) {
+            if (!selectedUnloadingDealer || !selectedUnloadingDate) {
+                alert('Please select a date and dealer');
+                return;
+            }
+            
+            // Show loading for this specific dealer
+            document.getElementById(`unloadingMessageLoading_${dealerIndex}`).style.display = 'block';
+            document.getElementById(`unloadingMessageContent_${dealerIndex}`).style.display = 'none';
+            document.getElementById(`unloadingMessageError_${dealerIndex}`).style.display = 'none';
+            
+            fetch('/generate_unloading_whatsapp_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    dealer_code: selectedUnloadingDealer.code,
+                    date: selectedUnloadingDate
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById(`unloadingMessageLoading_${dealerIndex}`).style.display = 'none';
+                
+                if (data.success) {
+                    document.getElementById(`unloadingMessageContent_${dealerIndex}`).style.display = 'block';
+                    document.getElementById(`unloadingMessageContent_${dealerIndex}`).textContent = data.message;
+                } else {
+                    document.getElementById(`unloadingMessageError_${dealerIndex}`).style.display = 'block';
+                    document.getElementById(`unloadingErrorText_${dealerIndex}`).textContent = data.message || 'Failed to generate message';
+                }
+            })
+            .catch(error => {
+                document.getElementById(`unloadingMessageLoading_${dealerIndex}`).style.display = 'none';
+                document.getElementById(`unloadingMessageError_${dealerIndex}`).style.display = 'block';
+                document.getElementById(`unloadingErrorText_${dealerIndex}`).textContent = 'Error generating message: ' + error.message;
+            });
+        }
+        
+        function copyUnloadingMessage(dealerIndex) {
+            const messageElement = document.getElementById(`unloadingMessageContent_${dealerIndex}`);
+            const messageText = messageElement.textContent || messageElement.innerText;
+            
+            if (!messageText || messageText.trim() === '') {
+                alert('No message to copy. Please generate a message first.');
+                return;
+            }
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(messageText).then(() => {
+                    showUnloadingCopySuccess(dealerIndex);
+                }).catch(err => {
+                    console.error('Clipboard API failed:', err);
+                    fallbackUnloadingCopy(messageText, dealerIndex);
+                });
+            } else {
+                fallbackUnloadingCopy(messageText, dealerIndex);
+            }
+        }
+        
+        function showUnloadingCopySuccess(dealerIndex) {
+            const button = document.getElementById(`unloadingCopyBtn_${dealerIndex}`);
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                button.classList.remove('btn-success');
+                button.classList.add('btn-info');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('btn-info');
+                    button.classList.add('btn-success');
+                }, 2000);
+            }
+        }
+        
+        function fallbackUnloadingCopy(text, dealerIndex) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showUnloadingCopySuccess(dealerIndex);
+                } else {
+                    throw new Error('Copy command failed');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                alert('Copy failed. Please select and copy the message manually.');
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
     </script>
 </body>
 </html>

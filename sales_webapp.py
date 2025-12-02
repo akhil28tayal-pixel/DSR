@@ -20,7 +20,7 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
 # Database configuration
-DB_PATH = "/Users/akhiltayal/CascadeProjects/webapp_sales_collections.db"
+DB_PATH = "/Users/akhiltayal/CascadeProjects/DSR/webapp_sales_collections.db"
 
 # Configure upload settings
 UPLOAD_FOLDER = '/Users/akhiltayal/CascadeProjects/uploads'
@@ -791,6 +791,285 @@ def generate_whatsapp_message_api():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+# ============== Unloading WhatsApp Generator Routes ==============
+
+@app.route('/get_dealers_for_unloading_date', methods=['POST'])
+def get_dealers_for_unloading_date():
+    """Get list of dealers who had unloading on a specific date, grouped by dealer_code"""
+    try:
+        data = request.get_json()
+        selected_date = data.get('date')
+        
+        if not selected_date:
+            return jsonify({'success': False, 'message': 'Date is required'})
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        # Get dealers who had unloading on the selected date, grouped by dealer_code
+        cursor.execute('''
+            SELECT dealer_code, unloading_dealer, 
+                   COUNT(*) as unloading_count,
+                   SUM(unloaded_quantity) as total_qty,
+                   SUM(ppc_unloaded) as total_ppc,
+                   SUM(premium_unloaded) as total_premium,
+                   SUM(opc_unloaded) as total_opc
+            FROM vehicle_unloading 
+            WHERE unloading_date = ?
+            GROUP BY dealer_code, unloading_dealer
+            ORDER BY unloading_dealer
+        ''', (selected_date,))
+        
+        dealers = []
+        for row in cursor.fetchall():
+            dealers.append({
+                'dealer_code': row[0],
+                'dealer_name': row[1],
+                'unloading_count': row[2],
+                'total_qty': row[3] or 0,
+                'total_ppc': row[4] or 0,
+                'total_premium': row[5] or 0,
+                'total_opc': row[6] or 0
+            })
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'dealers': dealers,
+            'date': selected_date
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/generate_unloading_whatsapp_message', methods=['POST'])
+def generate_unloading_whatsapp_message():
+    """Generate WhatsApp message for unloading details of a dealer on a specific date"""
+    try:
+        data = request.get_json()
+        dealer_code = data.get('dealer_code')
+        unloading_date = data.get('date')
+        
+        if not dealer_code or not unloading_date:
+            return jsonify({'success': False, 'message': 'Dealer code and date are required'})
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        # Get dealer name
+        cursor.execute('''
+            SELECT DISTINCT unloading_dealer 
+            FROM vehicle_unloading 
+            WHERE dealer_code = ? AND unloading_date = ?
+        ''', (dealer_code, unloading_date))
+        dealer_row = cursor.fetchone()
+        dealer_name = dealer_row[0] if dealer_row else 'Unknown Dealer'
+        
+        # Get all unloading records for this dealer on this date
+        cursor.execute('''
+            SELECT truck_number, unloading_point, 
+                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity
+            FROM vehicle_unloading 
+            WHERE dealer_code = ? AND unloading_date = ?
+            ORDER BY truck_number
+        ''', (dealer_code, unloading_date))
+        
+        unloading_records = cursor.fetchall()
+        
+        if not unloading_records:
+            db.close()
+            return jsonify({'success': False, 'message': 'No unloading records found for this dealer on this date'})
+        
+        # Get billing for this dealer on this date
+        cursor.execute('''
+            SELECT truck_number, invoice_number, 
+                   ppc_quantity, premium_quantity, opc_quantity, total_quantity
+            FROM sales_data 
+            WHERE dealer_code = ? AND sale_date = ?
+            ORDER BY invoice_number
+        ''', (dealer_code, unloading_date))
+        
+        billing_records = cursor.fetchall()
+        
+        # Get opening balance for this dealer on this date
+        opening = get_dealer_opening_balance(cursor, dealer_name, unloading_date, is_other_dealer=False, dealer_code=dealer_code)
+        
+        # Calculate total billed today
+        total_ppc_billed = 0
+        total_premium_billed = 0
+        total_opc_billed = 0
+        
+        for record in billing_records:
+            total_ppc_billed += record[2] or 0
+            total_premium_billed += record[3] or 0
+            total_opc_billed += record[4] or 0
+        
+        # Calculate total unloaded today
+        total_ppc_unloaded = 0
+        total_premium_unloaded = 0
+        total_opc_unloaded = 0
+        
+        for record in unloading_records:
+            total_ppc_unloaded += record[2] or 0
+            total_premium_unloaded += record[3] or 0
+            total_opc_unloaded += record[4] or 0
+        
+        # Calculate closing balance (opening + billed - unloaded)
+        closing_ppc = opening['ppc'] + total_ppc_billed - total_ppc_unloaded
+        closing_premium = opening['premium'] + total_premium_billed - total_premium_unloaded
+        closing_opc = opening['opc'] + total_opc_billed - total_opc_unloaded
+        
+        db.close()
+        
+        # Format date for display
+        from datetime import datetime
+        date_obj = datetime.strptime(unloading_date, '%Y-%m-%d')
+        formatted_date = date_obj.strftime('%d-%m-%Y')
+        
+        # Build WhatsApp message
+        message_lines = []
+        message_lines.append(f"*{dealer_name}*")
+        message_lines.append(f"📅 Date: {formatted_date}")
+        message_lines.append("")
+        
+        # Unloading section
+        message_lines.append("*📦 Today's Unloading:*")
+        message_lines.append("─" * 25)
+        
+        for record in unloading_records:
+            truck_number = record[0]
+            unloading_point = record[1] or '-'
+            ppc = record[2] or 0
+            premium = record[3] or 0
+            opc = record[4] or 0
+            total_qty = record[5] or 0
+            
+            # Convert to bags
+            ppc_bags = int(ppc * 20)
+            premium_bags = int(premium * 20)
+            opc_bags = int(opc * 20)
+            total_bags = int(total_qty * 20)
+            
+            message_lines.append(f"🚛 Truck: *{truck_number}*")
+            message_lines.append(f"   📍 Point: {unloading_point}")
+            
+            # Show bags breakdown
+            bag_parts = []
+            if ppc_bags > 0:
+                bag_parts.append(f"PPC: {ppc_bags}")
+            if premium_bags > 0:
+                bag_parts.append(f"Premium: {premium_bags}")
+            if opc_bags > 0:
+                bag_parts.append(f"OPC: {opc_bags}")
+            
+            if bag_parts:
+                message_lines.append(f"   🎒 {', '.join(bag_parts)}")
+            message_lines.append(f"   📊 Total: *{total_bags} bags*")
+            message_lines.append("")
+        
+        # Total unloading summary
+        total_unloaded_bags = int((total_ppc_unloaded + total_premium_unloaded + total_opc_unloaded) * 20)
+        message_lines.append(f"*Total Unloaded: {total_unloaded_bags} bags*")
+        message_lines.append("")
+        
+        # Material Balance section
+        message_lines.append("─" * 25)
+        message_lines.append("*📊 Material Balance:*")
+        message_lines.append("")
+        
+        # Opening balance (in bags) - show even if negative
+        opening_ppc_bags = int(opening['ppc'] * 20)
+        opening_premium_bags = int(opening['premium'] * 20)
+        opening_opc_bags = int(opening['opc'] * 20)
+        
+        message_lines.append("*Opening Balance:*")
+        balance_parts = []
+        if opening_ppc_bags != 0:
+            balance_parts.append(f"PPC: {opening_ppc_bags}")
+        if opening_premium_bags != 0:
+            balance_parts.append(f"Premium: {opening_premium_bags}")
+        if opening_opc_bags != 0:
+            balance_parts.append(f"OPC: {opening_opc_bags}")
+        
+        if balance_parts:
+            message_lines.append(f"  {', '.join(balance_parts)} bags")
+        else:
+            message_lines.append("  No opening balance")
+        
+        message_lines.append("")
+        
+        # Today's billing (in bags) - show total only in material balance
+        billed_ppc_bags = int(total_ppc_billed * 20)
+        billed_premium_bags = int(total_premium_billed * 20)
+        billed_opc_bags = int(total_opc_billed * 20)
+        
+        message_lines.append("*Today's Billing (+):*")
+        billing_parts = []
+        if billed_ppc_bags != 0:
+            billing_parts.append(f"PPC: {billed_ppc_bags}")
+        if billed_premium_bags != 0:
+            billing_parts.append(f"Premium: {billed_premium_bags}")
+        if billed_opc_bags != 0:
+            billing_parts.append(f"OPC: {billed_opc_bags}")
+        
+        if billing_parts:
+            message_lines.append(f"  {', '.join(billing_parts)} bags")
+        else:
+            message_lines.append("  No billing today")
+        
+        message_lines.append("")
+        
+        # Today's unloading (in bags)
+        unloaded_ppc_bags = int(total_ppc_unloaded * 20)
+        unloaded_premium_bags = int(total_premium_unloaded * 20)
+        unloaded_opc_bags = int(total_opc_unloaded * 20)
+        
+        message_lines.append("*Today's Unloading (-):*")
+        unloading_parts = []
+        if unloaded_ppc_bags != 0:
+            unloading_parts.append(f"PPC: {unloaded_ppc_bags}")
+        if unloaded_premium_bags != 0:
+            unloading_parts.append(f"Premium: {unloaded_premium_bags}")
+        if unloaded_opc_bags != 0:
+            unloading_parts.append(f"OPC: {unloaded_opc_bags}")
+        
+        if unloading_parts:
+            message_lines.append(f"  {', '.join(unloading_parts)} bags")
+        
+        message_lines.append("")
+        
+        # Closing balance (in bags)
+        closing_ppc_bags = int(closing_ppc * 20)
+        closing_premium_bags = int(closing_premium * 20)
+        closing_opc_bags = int(closing_opc * 20)
+        
+        message_lines.append("*Closing Balance:*")
+        closing_parts = []
+        if closing_ppc_bags != 0:
+            closing_parts.append(f"PPC: {closing_ppc_bags}")
+        if closing_premium_bags != 0:
+            closing_parts.append(f"Premium: {closing_premium_bags}")
+        if closing_opc_bags != 0:
+            closing_parts.append(f"OPC: {closing_opc_bags}")
+        
+        if closing_parts:
+            message_lines.append(f"  {', '.join(closing_parts)} bags")
+        else:
+            message_lines.append("  No pending balance")
+        
+        message = '\n'.join(message_lines)
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'dealer_name': dealer_name,
+            'unloading_count': len(unloading_records)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 # ============== Vehicle Details Routes ==============
 
 @app.route('/vehicle_details')
@@ -847,14 +1126,25 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
     
     # Get cumulative billed from month start to before_date (within the month)
     if not is_other_dealer:
-        cursor.execute('''
-            SELECT COALESCE(SUM(ppc_quantity), 0), 
-                   COALESCE(SUM(premium_quantity), 0), 
-                   COALESCE(SUM(opc_quantity), 0),
-                   COALESCE(SUM(total_quantity), 0)
-            FROM sales_data 
-            WHERE dealer_name = ? AND sale_date >= ? AND sale_date < ?
-        ''', (dealer_name, month_start, before_date))
+        # Use dealer_code if available to avoid matching multiple dealers with same name
+        if dealer_code:
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_quantity), 0), 
+                       COALESCE(SUM(premium_quantity), 0), 
+                       COALESCE(SUM(opc_quantity), 0),
+                       COALESCE(SUM(total_quantity), 0)
+                FROM sales_data 
+                WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?
+            ''', (dealer_code, month_start, before_date))
+        else:
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_quantity), 0), 
+                       COALESCE(SUM(premium_quantity), 0), 
+                       COALESCE(SUM(opc_quantity), 0),
+                       COALESCE(SUM(total_quantity), 0)
+                FROM sales_data 
+                WHERE dealer_name = ? AND sale_date >= ? AND sale_date < ?
+            ''', (dealer_name, month_start, before_date))
     else:
         cursor.execute('''
             SELECT COALESCE(SUM(ppc_quantity), 0), 
@@ -868,14 +1158,25 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
     billed = cursor.fetchone()
     
     # Get cumulative unloaded from month start to before_date (within the month)
-    cursor.execute('''
-        SELECT COALESCE(SUM(ppc_unloaded), 0), 
-               COALESCE(SUM(premium_unloaded), 0), 
-               COALESCE(SUM(opc_unloaded), 0),
-               COALESCE(SUM(unloaded_quantity), 0)
-        FROM vehicle_unloading 
-        WHERE unloading_dealer = ? AND unloading_date >= ? AND unloading_date < ?
-    ''', (dealer_name, month_start, before_date))
+    # Use dealer_code if available to avoid matching multiple dealers with same name
+    if dealer_code and not is_other_dealer:
+        cursor.execute('''
+            SELECT COALESCE(SUM(ppc_unloaded), 0), 
+                   COALESCE(SUM(premium_unloaded), 0), 
+                   COALESCE(SUM(opc_unloaded), 0),
+                   COALESCE(SUM(unloaded_quantity), 0)
+            FROM vehicle_unloading 
+            WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date < ?
+        ''', (dealer_code, month_start, before_date))
+    else:
+        cursor.execute('''
+            SELECT COALESCE(SUM(ppc_unloaded), 0), 
+                   COALESCE(SUM(premium_unloaded), 0), 
+                   COALESCE(SUM(opc_unloaded), 0),
+                   COALESCE(SUM(unloaded_quantity), 0)
+            FROM vehicle_unloading 
+            WHERE unloading_dealer = ? AND unloading_date >= ? AND unloading_date < ?
+        ''', (dealer_name, month_start, before_date))
     
     unloaded = cursor.fetchone()
     
@@ -1022,8 +1323,10 @@ def get_dealer_balance():
         
         # Get unloaded quantities by dealer from vehicle_unloading for selected date only
         # (opening balance already includes cumulative before this date)
+        # Group by dealer_code to handle dealers with same name but different codes
         cursor.execute('''
-            SELECT unloading_dealer,
+            SELECT dealer_code,
+                   unloading_dealer,
                    SUM(ppc_unloaded) as ppc,
                    SUM(premium_unloaded) as premium,
                    SUM(opc_unloaded) as opc,
@@ -1031,21 +1334,38 @@ def get_dealer_balance():
                    MAX(is_other_dealer) as is_other
             FROM vehicle_unloading 
             WHERE unloading_date = ?
-            GROUP BY unloading_dealer
+            GROUP BY dealer_code, unloading_dealer
         ''', (selected_date,))
         
-        unloading_map = {}
+        unloading_map = {}  # Keyed by dealer_code for regular dealers
+        unloading_map_by_name = {}  # Keyed by dealer_name for other dealers (no code)
         for row in cursor.fetchall():
-            unloading_map[row[0]] = {
-                'ppc': row[1] or 0,
-                'premium': row[2] or 0,
-                'opc': row[3] or 0,
-                'total': row[4] or 0,
-                'is_other': bool(row[5])
+            dealer_code = row[0]
+            dealer_name = row[1]
+            unload_data = {
+                'ppc': row[2] or 0,
+                'premium': row[3] or 0,
+                'opc': row[4] or 0,
+                'total': row[5] or 0,
+                'is_other': bool(row[6])
             }
+            if dealer_code:
+                unloading_map[dealer_code] = unload_data
+            else:
+                # For other dealers without code, use name
+                unloading_map_by_name[dealer_name] = unload_data
         
         # Build dealer list with opening balance, billed, unloaded, and closing balance
         dealers = []
+        
+        # Cumulative totals for "Other Dealers"
+        other_dealers_cumulative = {
+            'opening_ppc': 0, 'opening_premium': 0, 'opening_opc': 0, 'opening_total': 0,
+            'billed_ppc': 0, 'billed_premium': 0, 'billed_opc': 0, 'billed_total': 0,
+            'unloaded_ppc': 0, 'unloaded_premium': 0, 'unloaded_opc': 0, 'unloaded_total': 0,
+            'closing_ppc': 0, 'closing_premium': 0, 'closing_opc': 0, 'closing_total': 0
+        }
+        has_other_dealers = False
         
         # Process all dealers
         for dealer_code, dealer_info in all_dealers.items():
@@ -1061,8 +1381,11 @@ def get_dealer_balance():
             else:
                 billed = billed_map.get(dealer_code, {'ppc': 0, 'premium': 0, 'opc': 0, 'total': 0})
             
-            # Get today's unloaded
-            unloaded = unloading_map.get(dealer_name, {'ppc': 0, 'premium': 0, 'opc': 0, 'total': 0, 'is_other': False})
+            # Get today's unloaded - use dealer_code for regular dealers, name for other dealers
+            if is_other:
+                unloaded = unloading_map_by_name.get(dealer_name, {'ppc': 0, 'premium': 0, 'opc': 0, 'total': 0, 'is_other': True})
+            else:
+                unloaded = unloading_map.get(dealer_code, {'ppc': 0, 'premium': 0, 'opc': 0, 'total': 0, 'is_other': False})
             
             # Calculate closing
             closing_ppc = opening['ppc'] + billed['ppc'] - unloaded['ppc']
@@ -1075,27 +1398,72 @@ def get_dealer_balance():
             has_balance = abs(closing_total) > 0.01
             
             if has_activity or has_balance:
-                dealers.append({
-                    'dealer_code': dealer_code,
-                    'dealer_name': dealer_name,
-                    'is_other_dealer': is_other,
-                    'opening_ppc': opening['ppc'],
-                    'opening_premium': opening['premium'],
-                    'opening_opc': opening['opc'],
-                    'opening_total': opening['total'],
-                    'billed_ppc': billed['ppc'],
-                    'billed_premium': billed['premium'],
-                    'billed_opc': billed['opc'],
-                    'billed_total': billed['total'],
-                    'unloaded_ppc': unloaded['ppc'],
-                    'unloaded_premium': unloaded['premium'],
-                    'unloaded_opc': unloaded['opc'],
-                    'unloaded_total': unloaded['total'],
-                    'closing_ppc': closing_ppc,
-                    'closing_premium': closing_premium,
-                    'closing_opc': closing_opc,
-                    'closing_total': closing_total
-                })
+                if is_other:
+                    # Aggregate into cumulative "Other Dealers" row
+                    has_other_dealers = True
+                    other_dealers_cumulative['opening_ppc'] += opening['ppc']
+                    other_dealers_cumulative['opening_premium'] += opening['premium']
+                    other_dealers_cumulative['opening_opc'] += opening['opc']
+                    other_dealers_cumulative['opening_total'] += opening['total']
+                    other_dealers_cumulative['billed_ppc'] += billed['ppc']
+                    other_dealers_cumulative['billed_premium'] += billed['premium']
+                    other_dealers_cumulative['billed_opc'] += billed['opc']
+                    other_dealers_cumulative['billed_total'] += billed['total']
+                    other_dealers_cumulative['unloaded_ppc'] += unloaded['ppc']
+                    other_dealers_cumulative['unloaded_premium'] += unloaded['premium']
+                    other_dealers_cumulative['unloaded_opc'] += unloaded['opc']
+                    other_dealers_cumulative['unloaded_total'] += unloaded['total']
+                    other_dealers_cumulative['closing_ppc'] += closing_ppc
+                    other_dealers_cumulative['closing_premium'] += closing_premium
+                    other_dealers_cumulative['closing_opc'] += closing_opc
+                    other_dealers_cumulative['closing_total'] += closing_total
+                else:
+                    # Add regular dealer as individual row
+                    dealers.append({
+                        'dealer_code': dealer_code,
+                        'dealer_name': dealer_name,
+                        'is_other_dealer': False,
+                        'opening_ppc': opening['ppc'],
+                        'opening_premium': opening['premium'],
+                        'opening_opc': opening['opc'],
+                        'opening_total': opening['total'],
+                        'billed_ppc': billed['ppc'],
+                        'billed_premium': billed['premium'],
+                        'billed_opc': billed['opc'],
+                        'billed_total': billed['total'],
+                        'unloaded_ppc': unloaded['ppc'],
+                        'unloaded_premium': unloaded['premium'],
+                        'unloaded_opc': unloaded['opc'],
+                        'unloaded_total': unloaded['total'],
+                        'closing_ppc': closing_ppc,
+                        'closing_premium': closing_premium,
+                        'closing_opc': closing_opc,
+                        'closing_total': closing_total
+                    })
+        
+        # Add cumulative "Other Dealers" row if there are any
+        if has_other_dealers:
+            dealers.append({
+                'dealer_code': 'OTHER',
+                'dealer_name': 'Other Dealers (Cumulative)',
+                'is_other_dealer': True,
+                'opening_ppc': other_dealers_cumulative['opening_ppc'],
+                'opening_premium': other_dealers_cumulative['opening_premium'],
+                'opening_opc': other_dealers_cumulative['opening_opc'],
+                'opening_total': other_dealers_cumulative['opening_total'],
+                'billed_ppc': other_dealers_cumulative['billed_ppc'],
+                'billed_premium': other_dealers_cumulative['billed_premium'],
+                'billed_opc': other_dealers_cumulative['billed_opc'],
+                'billed_total': other_dealers_cumulative['billed_total'],
+                'unloaded_ppc': other_dealers_cumulative['unloaded_ppc'],
+                'unloaded_premium': other_dealers_cumulative['unloaded_premium'],
+                'unloaded_opc': other_dealers_cumulative['unloaded_opc'],
+                'unloaded_total': other_dealers_cumulative['unloaded_total'],
+                'closing_ppc': other_dealers_cumulative['closing_ppc'],
+                'closing_premium': other_dealers_cumulative['closing_premium'],
+                'closing_opc': other_dealers_cumulative['closing_opc'],
+                'closing_total': other_dealers_cumulative['closing_total']
+            })
         
         # Get pending vehicles (billed but not fully unloaded) up to selected date
         # First, get all billing aggregated by truck and date (including other dealers billing)
@@ -1531,17 +1899,32 @@ def get_consolidated_vehicles():
         
         if truck_numbers_today:
             placeholders = ','.join(['?' for _ in truck_numbers_today])
+            # Include both sales_data and other_dealers_billing for previous billings
             cursor.execute(f'''
                 SELECT truck_number, sale_date, 
-                       SUM(ppc_quantity) as ppc, SUM(premium_quantity) as premium, 
-                       SUM(opc_quantity) as opc, SUM(total_quantity) as total,
-                       GROUP_CONCAT(DISTINCT dealer_name) as dealers
-                FROM sales_data 
-                WHERE truck_number IN ({placeholders}) 
-                  AND sale_date >= ? AND sale_date < ?
+                       SUM(ppc) as ppc, SUM(premium) as premium, 
+                       SUM(opc) as opc, SUM(total) as total,
+                       GROUP_CONCAT(DISTINCT dealers) as dealers
+                FROM (
+                    SELECT truck_number, sale_date, 
+                           ppc_quantity as ppc, premium_quantity as premium, 
+                           opc_quantity as opc, total_quantity as total,
+                           dealer_name as dealers
+                    FROM sales_data 
+                    WHERE truck_number IN ({placeholders}) 
+                      AND sale_date >= ? AND sale_date < ?
+                    UNION ALL
+                    SELECT truck_number, sale_date, 
+                           ppc_quantity as ppc, premium_quantity as premium, 
+                           opc_quantity as opc, total_quantity as total,
+                           dealer_name as dealers
+                    FROM other_dealers_billing 
+                    WHERE truck_number IN ({placeholders}) 
+                      AND sale_date >= ? AND sale_date < ?
+                )
                 GROUP BY truck_number, sale_date
                 ORDER BY truck_number, sale_date
-            ''', (*truck_numbers_today, month_start, selected_date))
+            ''', (*truck_numbers_today, month_start, selected_date, *truck_numbers_today, month_start, selected_date))
             
             for row in cursor.fetchall():
                 truck = row[0]
@@ -1787,13 +2170,18 @@ def get_consolidated_vehicles():
             unloaded_for_opening_opc = min(opening_balance_opc, total_unloaded_opc)
             
             # Get total previous billings (not just pending - ALL previous billings in the month)
+            # EXCLUDE opening balance since it's already handled separately above
             total_prev_billed_ppc = 0
             total_prev_billed_premium = 0
             total_prev_billed_opc = 0
             if truck_number in previous_billings:
-                total_prev_billed_ppc = sum(p['ppc'] for p in previous_billings[truck_number])
-                total_prev_billed_premium = sum(p['premium'] for p in previous_billings[truck_number])
-                total_prev_billed_opc = sum(p['opc'] for p in previous_billings[truck_number])
+                for p in previous_billings[truck_number]:
+                    # Skip opening balance entries - they're already counted in opening_balance_*
+                    if p.get('dealers') == 'Opening Balance':
+                        continue
+                    total_prev_billed_ppc += p['ppc']
+                    total_prev_billed_premium += p['premium']
+                    total_prev_billed_opc += p['opc']
             
             # Unloading consumed by previous billings (after opening)
             remaining_after_opening_ppc = total_unloaded_ppc - unloaded_for_opening_ppc
@@ -1828,12 +2216,54 @@ def get_consolidated_vehicles():
             unloading_for_today_premium = max(0, total_unloaded_premium - previous_pending_premium - (truck_data['total_premium'] - remaining_premium) if previous_pending_premium > 0 else total_unloaded_premium)
             unloading_for_today_opc = max(0, total_unloaded_opc - previous_pending_opc - (truck_data['total_opc'] - remaining_opc) if previous_pending_opc > 0 else total_unloaded_opc)
             
-            # If all unloading was consumed by previous billings, clear unloading_details for today
-            # This is determined by: today's remaining = today's billed (no unloading applied to today)
-            today_unloaded_ppc = truck_data['total_ppc'] - remaining_ppc + previous_pending_ppc
-            if today_unloaded_ppc <= previous_pending_ppc + 0.01:
+            # Filter unloading_details to only show unloading that applies to today's billing
+            # by matching product types and excluding unloading consumed by previous billings
+            today_has_unloading = (unloaded_for_today_ppc > 0.01 or 
+                                   unloaded_for_today_premium > 0.01 or 
+                                   unloaded_for_today_opc > 0.01)
+            
+            if not today_has_unloading:
                 # All unloading went to previous billings, not today's
                 truck_data['unloading_details'] = []
+            else:
+                # Filter unloading details to only show the portion that applies to today's billing
+                # Use FIFO: only show up to unloaded_for_today_* amounts
+                filtered_unloading = []
+                remaining_to_show_ppc = unloaded_for_today_ppc
+                remaining_to_show_premium = unloaded_for_today_premium
+                remaining_to_show_opc = unloaded_for_today_opc
+                
+                for u in truck_data.get('unloading_details', []):
+                    record_ppc = u.get('ppc_unloaded', 0)
+                    record_premium = u.get('premium_unloaded', 0)
+                    record_opc = u.get('opc_unloaded', 0)
+                    
+                    # Only take up to what's remaining for today's billing
+                    show_ppc = min(record_ppc, remaining_to_show_ppc) if truck_data['total_ppc'] > 0 else 0
+                    show_premium = min(record_premium, remaining_to_show_premium) if truck_data['total_premium'] > 0 else 0
+                    show_opc = min(record_opc, remaining_to_show_opc) if truck_data['total_opc'] > 0 else 0
+                    
+                    # Update remaining
+                    remaining_to_show_ppc -= show_ppc
+                    remaining_to_show_premium -= show_premium
+                    remaining_to_show_opc -= show_opc
+                    
+                    if show_ppc > 0.01 or show_premium > 0.01 or show_opc > 0.01:
+                        filtered_unloading.append({
+                            'id': u['id'],
+                            'truck_number': u['truck_number'],
+                            'unloading_dealer': u['unloading_dealer'],
+                            'unloading_point': u['unloading_point'],
+                            'ppc_unloaded': round(show_ppc, 2),
+                            'premium_unloaded': round(show_premium, 2),
+                            'opc_unloaded': round(show_opc, 2),
+                            'unloaded_quantity': round(show_ppc + show_premium + show_opc, 2),
+                            'notes': u.get('notes', ''),
+                            'dealer_code': u.get('dealer_code', ''),
+                            'is_other_dealer': u.get('is_other_dealer', False),
+                            'unloading_date': u.get('unloading_date', '')
+                        })
+                truck_data['unloading_details'] = filtered_unloading
             
             # Add all vehicles billed on this date (including fully unloaded)
             vehicles_list.append(truck_data)
@@ -2170,8 +2600,9 @@ def get_consolidated_vehicles():
                     # For previous day pending vehicles, only show unloading that applies to THIS billing
                     prev_unloading = []
                     
-                    # Only include unloading details if some unloading applies to this billing
-                    if this_total_unloaded > 0.01:
+                    # Only include unloading details if some unloading TODAY applies to this billing
+                    # Use unloaded_today_* which is the FIFO-calculated amount for this billing
+                    if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                         cursor.execute('''
                             SELECT id, truck_number, unloading_dealer, unloading_point, 
                                    ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
@@ -2180,21 +2611,43 @@ def get_consolidated_vehicles():
                             WHERE truck_number = ? AND unloading_date = ?
                         ''', (truck_number, selected_date))
                         
+                        # Track remaining unloading to attribute to this billing
+                        remaining_to_show_ppc = unloaded_today_ppc
+                        remaining_to_show_premium = unloaded_today_premium
+                        remaining_to_show_opc = unloaded_today_opc
+                        
                         for urow in cursor.fetchall():
-                            prev_unloading.append({
-                                'id': urow[0],
-                                'truck_number': urow[1],
-                                'unloading_dealer': urow[2],
-                                'unloading_point': urow[3],
-                                'ppc_unloaded': urow[4] or 0,
-                                'premium_unloaded': urow[5] or 0,
-                                'opc_unloaded': urow[6] or 0,
-                                'unloaded_quantity': urow[7] or 0,
-                                'notes': urow[8],
-                                'dealer_code': urow[9],
-                                'is_other_dealer': bool(urow[10]) if urow[10] is not None else False,
-                                'unloading_date': urow[11]
-                            })
+                            # Calculate how much of this unloading record applies to this billing
+                            record_ppc = urow[4] or 0
+                            record_premium = urow[5] or 0
+                            record_opc = urow[6] or 0
+                            
+                            # Only take up to what's remaining for this billing
+                            show_ppc = min(record_ppc, remaining_to_show_ppc) if billed_ppc > 0 else 0
+                            show_premium = min(record_premium, remaining_to_show_premium) if billed_premium > 0 else 0
+                            show_opc = min(record_opc, remaining_to_show_opc) if billed_opc > 0 else 0
+                            
+                            # Update remaining
+                            remaining_to_show_ppc -= show_ppc
+                            remaining_to_show_premium -= show_premium
+                            remaining_to_show_opc -= show_opc
+                            
+                            # Only include if there's something to show
+                            if show_ppc > 0.01 or show_premium > 0.01 or show_opc > 0.01:
+                                prev_unloading.append({
+                                    'id': urow[0],
+                                    'truck_number': urow[1],
+                                    'unloading_dealer': urow[2],
+                                    'unloading_point': urow[3],
+                                    'ppc_unloaded': round(show_ppc, 2),
+                                    'premium_unloaded': round(show_premium, 2),
+                                    'opc_unloaded': round(show_opc, 2),
+                                    'unloaded_quantity': round(show_ppc + show_premium + show_opc, 2),
+                                    'notes': urow[8],
+                                    'dealer_code': urow[9],
+                                    'is_other_dealer': bool(urow[10]) if urow[10] is not None else False,
+                                    'unloading_date': urow[11]
+                                })
                     
                     # Add to list as a previous day pending vehicle
                     vehicles_list.append({
@@ -2548,6 +3001,125 @@ def save_opening_material_balance():
         db.close()
         
         return jsonify({'success': True, 'message': 'Data saved successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/unloading_query')
+def unloading_query_page():
+    """Render the unloading query page"""
+    return render_template('unloading_query.html')
+
+@app.route('/api/unloading_query', methods=['POST'])
+def api_unloading_query():
+    """API endpoint for querying unloading data"""
+    try:
+        data = request.get_json()
+        query_type = data.get('query_type')
+        
+        db = sqlite3.connect(DB_PATH)
+        cursor = db.cursor()
+        
+        # Build query based on type
+        base_query = '''
+            SELECT id, truck_number, unloading_date, unloading_dealer, unloading_point,
+                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity,
+                   dealer_code, is_other_dealer
+            FROM vehicle_unloading
+            WHERE 1=1
+        '''
+        params = []
+        
+        if query_type == 'date':
+            # Date-wise query
+            from_date = data.get('from_date')
+            to_date = data.get('to_date')
+            if from_date:
+                base_query += ' AND unloading_date >= ?'
+                params.append(from_date)
+            if to_date:
+                base_query += ' AND unloading_date <= ?'
+                params.append(to_date)
+                
+        elif query_type == 'truck':
+            # Truck-wise query
+            truck_number = data.get('truck_number', '').strip()
+            if truck_number:
+                base_query += ' AND truck_number LIKE ?'
+                params.append(f'%{truck_number}%')
+            from_date = data.get('from_date')
+            to_date = data.get('to_date')
+            if from_date:
+                base_query += ' AND unloading_date >= ?'
+                params.append(from_date)
+            if to_date:
+                base_query += ' AND unloading_date <= ?'
+                params.append(to_date)
+                
+        elif query_type == 'dealer':
+            # Dealer-wise query
+            dealer_code = data.get('dealer_code')
+            if dealer_code:
+                base_query += ' AND dealer_code = ?'
+                params.append(dealer_code)
+            from_date = data.get('from_date')
+            to_date = data.get('to_date')
+            if from_date:
+                base_query += ' AND unloading_date >= ?'
+                params.append(from_date)
+            if to_date:
+                base_query += ' AND unloading_date <= ?'
+                params.append(to_date)
+        
+        base_query += ' ORDER BY unloading_date DESC, truck_number'
+        
+        cursor.execute(base_query, params)
+        rows = cursor.fetchall()
+        
+        records = []
+        total_ppc = 0
+        total_premium = 0
+        total_opc = 0
+        total_qty = 0
+        
+        for row in rows:
+            ppc = row[5] or 0
+            premium = row[6] or 0
+            opc = row[7] or 0
+            qty = row[8] or 0
+            
+            total_ppc += ppc
+            total_premium += premium
+            total_opc += opc
+            total_qty += qty
+            
+            records.append({
+                'id': row[0],
+                'truck_number': row[1],
+                'unloading_date': row[2],
+                'unloading_dealer': row[3],
+                'unloading_point': row[4],
+                'ppc_unloaded': ppc,
+                'premium_unloaded': premium,
+                'opc_unloaded': opc,
+                'unloaded_quantity': qty,
+                'dealer_code': row[9],
+                'is_other_dealer': bool(row[10]) if row[10] is not None else False
+            })
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'records': records,
+            'summary': {
+                'ppc': total_ppc,
+                'premium': total_premium,
+                'opc': total_opc,
+                'total': total_qty,
+                'count': len(records)
+            }
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

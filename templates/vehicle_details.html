@@ -989,13 +989,20 @@
                                         <h6 class="fw-bold mb-2"><i class="bi bi-geo-alt me-1"></i>Unloading Details (${unloadingCount})</h6>
                                         ${unloadingCount > 0 ? `
                                             <table class="table table-sm mini-table">
-                                                <thead><tr><th>Dealer</th><th>Point</th><th class="text-end">Qty</th></tr></thead>
+                                                <thead><tr><th>Dealer</th><th>Point</th><th class="text-end">Qty</th><th></th></tr></thead>
                                                 <tbody>
                                                     ${vehicle.unloading_details.map(u => `
                                                         <tr class="${u.is_other_dealer ? 'table-warning' : ''}">
                                                             <td>${u.unloading_dealer}${u.is_other_dealer ? ' <small>(Other)</small>' : ''}</td>
                                                             <td>${u.unloading_point}</td>
                                                             <td class="text-end">${((u.ppc_unloaded || 0) + (u.premium_unloaded || 0) + (u.opc_unloaded || 0)).toFixed(2)} MT</td>
+                                                            <td class="text-center">
+                                                                <button class="btn btn-sm btn-outline-danger py-0 px-1" 
+                                                                    onclick="deleteUnloading(${u.id}, '${u.unloading_dealer}', ${(u.ppc_unloaded || 0) + (u.premium_unloaded || 0) + (u.opc_unloaded || 0)})"
+                                                                    title="Delete unloading">
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
+                                                            </td>
                                                         </tr>
                                                     `).join('')}
                                                 </tbody>
@@ -1340,6 +1347,31 @@
             } catch (error) {
                 console.error('Error saving billing:', error);
                 alert('Error saving billing');
+            }
+        }
+        
+        // Delete unloading record
+        async function deleteUnloading(unloadingId, dealerName, quantity) {
+            if (!confirm(`Are you sure you want to delete unloading of ${quantity.toFixed(2)} MT for ${dealerName}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/delete_unloading/${unloadingId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(data.message || 'Unloading deleted successfully!');
+                    loadVehicles(); // Refresh the list
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to delete unloading'));
+                }
+            } catch (error) {
+                console.error('Error deleting unloading:', error);
+                alert('Error deleting unloading');
             }
         }
         

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import sys
 
 # Database path
-DB_PATH = "/Users/akhiltayal/CascadeProjects/webapp_sales_collections.db"
+DB_PATH = "/Users/akhiltayal/CascadeProjects/DSR/webapp_sales_collections.db"
 
 # Bank holidays (you can update this list as needed)
 BANK_HOLIDAYS = [
