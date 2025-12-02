@@ -7,9 +7,11 @@ Generates formatted WhatsApp messages with billing details for dealers
 import sqlite3
 from datetime import datetime, timedelta
 import sys
+import os
 
-# Database path
-DB_PATH = "/Users/akhiltayal/CascadeProjects/DSR/webapp_sales_collections.db"
+# Database path - use relative path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "webapp_sales_collections.db")
 
 # Bank holidays (you can update this list as needed)
 BANK_HOLIDAYS = [

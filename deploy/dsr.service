@@ -1,0 +1,14 @@
+[Unit]
+Description=DSR Flask Application
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/var/www/dsr
+Environment="PATH=/var/www/dsr/venv/bin"
+ExecStart=/var/www/dsr/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:5001 sales_webapp:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

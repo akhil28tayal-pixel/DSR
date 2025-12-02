@@ -11,19 +11,22 @@ import os
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
+# Get the base directory of the application
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Import our database functions
 import sys
-sys.path.append('/Users/akhiltayal/CascadeProjects')
+sys.path.insert(0, BASE_DIR)
 from sales_collections_database import SalesCollectionsDatabase
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
-# Database configuration
-DB_PATH = "/Users/akhiltayal/CascadeProjects/DSR/webapp_sales_collections.db"
+# Database configuration - use relative path
+DB_PATH = os.path.join(BASE_DIR, "webapp_sales_collections.db")
 
-# Configure upload settings
-UPLOAD_FOLDER = '/Users/akhiltayal/CascadeProjects/uploads'
+# Configure upload settings - use relative path
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
