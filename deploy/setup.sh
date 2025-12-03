@@ -2,14 +2,13 @@
 # AWS EC2/Lightsail Setup Script for DSR Flask App
 
 # Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install Python and dependencies
-sudo apt install -y python3 python3-pip python3-venv nginx git
+# For Amazon Linux 2023
+sudo dnf update -y
+sudo dnf install -y python3 python3-pip nginx git
 
 # Create app directory
 sudo mkdir -p /var/www/dsr
-sudo chown -R ubuntu:ubuntu /var/www/dsr
+sudo chown -R ec2-user:ec2-user /var/www/dsr
 
 # Clone the repository (or copy files)
 cd /var/www/dsr
@@ -26,7 +25,7 @@ pip install -r requirements.txt
 mkdir -p uploads
 
 # Set permissions
-sudo chown -R ubuntu:ubuntu /var/www/dsr
+sudo chown -R ec2-user:ec2-user /var/www/dsr
 
 echo "Setup complete! Now run: sudo cp deploy/dsr.service /etc/systemd/system/"
 echo "Then: sudo systemctl enable dsr && sudo systemctl start dsr"

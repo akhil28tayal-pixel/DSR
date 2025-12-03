@@ -94,5 +94,8 @@ def clear_database(db_path):
         print(f"❌ Error clearing database: {e}")
 
 if __name__ == "__main__":
-    db_path = "/Users/akhiltayal/CascadeProjects/webapp_sales_collections.db"
+    import os
+    # Use relative path based on script location
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(BASE_DIR, "webapp_sales_collections.db")
     clear_database(db_path)

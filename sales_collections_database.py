@@ -301,11 +301,23 @@ def display_data(df, title="Data"):
     print(df.to_string(index=False))
 
 def main():
-    """Main function to process collections data and add to database"""
+    """Main function to process collections data and add to database
     
-    # File paths
-    collections_file = "/Users/akhiltayal/Downloads/Collection 1-20.xlsx"
-    db_path = "/Users/akhiltayal/CascadeProjects/sales_collections_data.db"
+    Usage: python sales_collections_database.py <collections_file.xlsx>
+    """
+    import sys
+    
+    # Get base directory
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(BASE_DIR, "webapp_sales_collections.db")
+    
+    # Check command line arguments
+    if len(sys.argv) < 2:
+        print("Usage: python sales_collections_database.py <collections_file.xlsx>")
+        print("Example: python sales_collections_database.py ~/Downloads/Collections.xlsx")
+        return
+    
+    collections_file = sys.argv[1]
     
     # Check if file exists
     if not os.path.exists(collections_file):
@@ -313,7 +325,7 @@ def main():
         return
     
     # Process collections file
-    print("Processing Collections 1-20.xlsx...")
+    print(f"Processing {collections_file}...")
     collections_data = process_collections_file(collections_file)
     
     if collections_data is None:
@@ -322,27 +334,6 @@ def main():
     
     # Connect to database and add collections data
     db = SalesCollectionsDatabase(db_path)
-    
-    # Copy existing sales data if it exists
-    old_db_path = "/Users/akhiltayal/CascadeProjects/sales_data.db"
-    if os.path.exists(old_db_path):
-        print("Copying existing sales data...")
-        try:
-            old_conn = sqlite3.connect(old_db_path)
-            # Check if the table exists
-            cursor = old_conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sales_data'")
-            if cursor.fetchone():
-                # Copy data from old database
-                old_data = pd.read_sql_query("SELECT * FROM sales_data", old_conn)
-                old_data.to_sql('sales_data', db.conn, if_exists='replace', index=False)
-                print(f"Sales data copied successfully: {len(old_data)} records")
-            else:
-                print("No sales_data table found in old database")
-            old_conn.close()
-        except Exception as e:
-            print(f"Error copying sales data: {e}")
-            print("Continuing without copying old sales data...")
     
     # Insert collections data
     inserted_count = db.insert_collections_data(collections_data)
@@ -353,8 +344,9 @@ def main():
     
     # Show collections summary
     collection_dates = db.get_available_collection_dates()
-    print(f"\nCollection dates in database: {len(collection_dates)} days")
-    print(f"Date range: {collection_dates[0]} to {collection_dates[-1]}")
+    if collection_dates:
+        print(f"\nCollection dates in database: {len(collection_dates)} days")
+        print(f"Date range: {collection_dates[0]} to {collection_dates[-1]}")
     
     # Overall collections statistics
     overall_stats = db.get_collections_stats()
@@ -363,18 +355,6 @@ def main():
     print(f"Total Transactions: {overall_stats['total_transactions']}")
     print(f"Total Collections: ₹{overall_stats['total_amount']:,.2f}")
     print(f"Average Collection: ₹{overall_stats['avg_amount']:,.2f}")
-    print(f"Min Collection: ₹{overall_stats['min_amount']:,.2f}")
-    print(f"Max Collection: ₹{overall_stats['max_amount']:,.2f}")
-    
-    # Show sample collections by dealer
-    print("\n" + "="*80)
-    print("TOP 10 DEALERS BY TOTAL COLLECTIONS")
-    print("="*80)
-    
-    collections_summary = db.get_collections_summary_by_dealer()
-    if not collections_summary.empty:
-        top_10 = collections_summary.head(10)
-        display_data(top_10, "Top 10 Dealers by Collections")
     
     db.close()
     print(f"\nDatabase updated and saved at: {db_path}")

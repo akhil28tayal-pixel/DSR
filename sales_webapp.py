@@ -154,13 +154,8 @@ def upload_sales():
             # Read Excel file
             df = pd.read_excel(file)
             
-            # Debug: Print column names to help with troubleshooting
-            print(f"Sales Excel file columns: {list(df.columns)}")
-            print(f"Number of rows: {len(df)}")
-            
             # Check if this is the new format (has 'Customer Code' instead of 'Dealer Code')
             if 'Customer Code' in df.columns and 'Invoice Date' in df.columns:
-                print("Detected new sales file format - processing with product aggregation")
                 return process_new_sales_format(df)
             
             # Process and save to database (original format)
@@ -459,7 +454,6 @@ def calculate_month_closing_balances(month_year):
         return closing_balances
         
     except Exception as e:
-        print(f"Error calculating closing balances: {str(e)}")
         return {}
 
 def get_opening_balances_with_auto_calculation(month_year):
@@ -517,7 +511,6 @@ def get_opening_balances_with_auto_calculation(month_year):
         return result_balances
         
     except Exception as e:
-        print(f"Error in get_opening_balances_with_auto_calculation: {str(e)}")
         return {}
 
 @app.route('/get_report', methods=['POST'])
@@ -680,7 +673,6 @@ def get_report():
         return jsonify({'success': False, 'message': str(e)})
 
 # Import WhatsApp message generator functions
-sys.path.append('/Users/akhiltayal/CascadeProjects')
 from whatsapp_message_generator import generate_whatsapp_message, get_dealer_billing_data
 
 @app.route('/whatsapp_generator')
@@ -1096,26 +1088,34 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
     manual_opening = {'ppc': 0, 'premium': 0, 'opc': 0}
     try:
         row = None
-        # First try to match by dealer_code (most accurate)
-        if dealer_code:
-            cursor.execute('''
-                SELECT ppc_qty, premium_qty, opc_qty
-                FROM opening_material_balance
-                WHERE month_year = ? AND dealer_code = ?
-            ''', (month_year, str(dealer_code)))
-            row = cursor.fetchone()
-        
-        # If no match by dealer_code and no dealer_code provided, try by name
-        # But only if there's exactly one dealer with that name
-        if not row and not dealer_code:
+        # For "Other" dealers, always match by dealer_name
+        if is_other_dealer:
             cursor.execute('''
                 SELECT ppc_qty, premium_qty, opc_qty
                 FROM opening_material_balance
                 WHERE month_year = ? AND dealer_name = ?
             ''', (month_year, dealer_name))
-            rows = cursor.fetchall()
-            if len(rows) == 1:
-                row = rows[0]
+            row = cursor.fetchone()
+        else:
+            # For regular dealers, first try to match by dealer_code (most accurate)
+            if dealer_code:
+                cursor.execute('''
+                    SELECT ppc_qty, premium_qty, opc_qty
+                    FROM opening_material_balance
+                    WHERE month_year = ? AND dealer_code = ?
+                ''', (month_year, str(dealer_code)))
+                row = cursor.fetchone()
+            
+            # If no match by dealer_code, try by name (only if exactly one match)
+            if not row:
+                cursor.execute('''
+                    SELECT ppc_qty, premium_qty, opc_qty
+                    FROM opening_material_balance
+                    WHERE month_year = ? AND dealer_name = ?
+                ''', (month_year, dealer_name))
+                rows = cursor.fetchall()
+                if len(rows) == 1:
+                    row = rows[0]
         
         if row:
             manual_opening = {
@@ -1223,9 +1223,16 @@ def get_dealer_balance():
             ''', (month_year,))
             for row in cursor.fetchall():
                 dealer_code = str(row[0])
-                all_dealers[dealer_code] = {
-                    'dealer_name': row[1] or f'Dealer {dealer_code}',
-                    'is_other': row[2] == 'Other'
+                is_other = row[2] == 'Other'
+                dealer_name = row[1] or f'Dealer {dealer_code}'
+                # For "Other" dealers, use dealer_name as key to avoid duplicates
+                if is_other:
+                    dealer_key = dealer_name
+                else:
+                    dealer_key = dealer_code
+                all_dealers[dealer_key] = {
+                    'dealer_name': dealer_name,
+                    'is_other': is_other
                 }
         except:
             pass
@@ -1345,18 +1352,19 @@ def get_dealer_balance():
         for row in cursor.fetchall():
             dealer_code = row[0]
             dealer_name = row[1]
+            is_other = bool(row[6])
             unload_data = {
                 'ppc': row[2] or 0,
                 'premium': row[3] or 0,
                 'opc': row[4] or 0,
                 'total': row[5] or 0,
-                'is_other': bool(row[6])
+                'is_other': is_other
             }
-            if dealer_code:
-                unloading_map[dealer_code] = unload_data
-            else:
-                # For other dealers without code, use name
+            # For other dealers (is_other=True or dealer_code='OTHER'), use name-based map
+            if is_other or dealer_code == 'OTHER' or not dealer_code:
                 unloading_map_by_name[dealer_name] = unload_data
+            else:
+                unloading_map[dealer_code] = unload_data
         
         # Build dealer list with opening balance, billed, unloaded, and closing balance
         dealers = []
@@ -3123,6 +3131,182 @@ def api_unloading_query():
                 'count': len(records)
             }
         })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/dealer_financial_balance')
+def dealer_financial_balance():
+    """Dealer financial balance management page"""
+    return render_template('dealer_financial_balance.html')
+
+@app.route('/api/dealer_financial_balance', methods=['POST'])
+def get_dealer_financial_balance():
+    """Get dealer financial balance data for a month"""
+    try:
+        data = request.get_json()
+        month_year = data.get('month_year', '')
+        
+        if not month_year:
+            return jsonify({'success': False, 'error': 'Month year is required'})
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        # Get month start and end dates
+        month_start = month_year + '-01'
+        # Get last day of month
+        year, month = map(int, month_year.split('-'))
+        if month == 12:
+            next_month_start = f'{year + 1}-01-01'
+        else:
+            next_month_start = f'{year}-{month + 1:02d}-01'
+        
+        # Get all dealers from sales_data for this month
+        cursor.execute('''
+            SELECT DISTINCT dealer_code, dealer_name
+            FROM sales_data
+            WHERE sale_date >= ? AND sale_date < ?
+            ORDER BY dealer_name
+        ''', (month_start, next_month_start))
+        
+        dealers_map = {}
+        for row in cursor.fetchall():
+            dealer_code = str(row[0])
+            dealers_map[dealer_code] = {
+                'dealer_code': dealer_code,
+                'dealer_name': row[1],
+                'opening_balance': 0,
+                'purchase_value': 0,
+                'collection': 0,
+                'credit_note': 0,
+                'debit_note': 0
+            }
+        
+        # Get purchase values (total_purchase_value from sales_data)
+        cursor.execute('''
+            SELECT dealer_code, SUM(total_purchase_value) as total_purchase
+            FROM sales_data
+            WHERE sale_date >= ? AND sale_date < ?
+            GROUP BY dealer_code
+        ''', (month_start, next_month_start))
+        
+        for row in cursor.fetchall():
+            dealer_code = str(row[0])
+            if dealer_code in dealers_map:
+                dealers_map[dealer_code]['purchase_value'] = row[1] or 0
+        
+        # Get collections
+        cursor.execute('''
+            SELECT dealer_code, SUM(amount) as total_collection
+            FROM collections_data
+            WHERE posting_date >= ? AND posting_date < ?
+            GROUP BY dealer_code
+        ''', (month_start, next_month_start))
+        
+        for row in cursor.fetchall():
+            dealer_code = str(row[0])
+            if dealer_code in dealers_map:
+                dealers_map[dealer_code]['collection'] = row[1] or 0
+        
+        # Get opening balances
+        cursor.execute('''
+            SELECT dealer_code, opening_balance
+            FROM opening_balances
+            WHERE month_year = ?
+        ''', (month_year,))
+        
+        for row in cursor.fetchall():
+            dealer_code = str(row[0])
+            if dealer_code in dealers_map:
+                dealers_map[dealer_code]['opening_balance'] = row[1] or 0
+        
+        # Get credit notes
+        cursor.execute('''
+            SELECT dealer_code, credit_discount
+            FROM credit_discounts
+            WHERE month_year = ?
+        ''', (month_year,))
+        
+        for row in cursor.fetchall():
+            dealer_code = str(row[0])
+            if dealer_code in dealers_map:
+                dealers_map[dealer_code]['credit_note'] = row[1] or 0
+        
+        # Get debit notes
+        cursor.execute('''
+            SELECT dealer_code, debit_amount
+            FROM debit_notes
+            WHERE month_year = ?
+        ''', (month_year,))
+        
+        for row in cursor.fetchall():
+            dealer_code = str(row[0])
+            if dealer_code in dealers_map:
+                dealers_map[dealer_code]['debit_note'] = row[1] or 0
+        
+        db.close()
+        
+        # Convert to list and sort by dealer name
+        dealers = sorted(dealers_map.values(), key=lambda x: x['dealer_name'])
+        
+        return jsonify({
+            'success': True,
+            'dealers': dealers
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/save_dealer_financial_balance', methods=['POST'])
+def save_dealer_financial_balance():
+    """Save dealer financial balance data"""
+    try:
+        data = request.get_json()
+        month_year = data.get('month_year', '')
+        dealers = data.get('dealers', [])
+        
+        if not month_year:
+            return jsonify({'success': False, 'error': 'Month year is required'})
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        for dealer in dealers:
+            dealer_code = dealer.get('dealer_code')
+            dealer_name = dealer.get('dealer_name')
+            opening_balance = dealer.get('opening_balance', 0)
+            credit_note = dealer.get('credit_note', 0)
+            debit_note = dealer.get('debit_note', 0)
+            
+            # Upsert opening balance
+            cursor.execute('''
+                INSERT INTO opening_balances (dealer_code, dealer_name, opening_balance, month_year, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(dealer_code, month_year) 
+                DO UPDATE SET opening_balance = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, opening_balance, month_year, opening_balance, dealer_name))
+            
+            # Upsert credit note
+            cursor.execute('''
+                INSERT INTO credit_discounts (dealer_code, dealer_name, credit_discount, month_year, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(dealer_code, month_year) 
+                DO UPDATE SET credit_discount = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, credit_note, month_year, credit_note, dealer_name))
+            
+            # Upsert debit note
+            cursor.execute('''
+                INSERT INTO debit_notes (dealer_code, dealer_name, debit_amount, month_year, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(dealer_code, month_year) 
+                DO UPDATE SET debit_amount = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, debit_note, month_year, debit_note, dealer_name))
+        
+        db.conn.commit()
+        db.close()
+        
+        return jsonify({'success': True, 'message': f'Saved data for {len(dealers)} dealers'})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

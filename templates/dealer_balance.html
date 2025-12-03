@@ -247,6 +247,183 @@
         .pending-table tbody tr:hover {
             background-color: #f0f9ff;
         }
+        
+        /* Balance Summary Modal Styles */
+        .balance-modal .modal-dialog {
+            max-width: 95%;
+            width: 1400px;
+        }
+        
+        .balance-modal .modal-header {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+        
+        .balance-modal .modal-content {
+            border-radius: 15px;
+            border: none;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .balance-modal .nav-tabs {
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .balance-modal .nav-tabs .nav-link {
+            border: none;
+            border-radius: 10px 10px 0 0;
+            padding: 12px 24px;
+            font-weight: 600;
+            color: #64748b;
+            transition: all 0.3s ease;
+        }
+        
+        .balance-modal .nav-tabs .nav-link.active {
+            color: white;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
+        }
+        
+        .balance-modal .nav-tabs .nav-link:hover:not(.active) {
+            background: #f1f5f9;
+            color: var(--primary-blue);
+        }
+        
+        .balance-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .balance-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.2s ease;
+        }
+        
+        .balance-item:hover {
+            background: #f8fafc;
+        }
+        
+        .balance-item.negative {
+            background: linear-gradient(90deg, #fee2e2 0%, #fef2f2 100%);
+            border-left: 4px solid #dc2626;
+        }
+        
+        .balance-item.negative:hover {
+            background: linear-gradient(90deg, #fecaca 0%, #fee2e2 100%);
+        }
+        
+        .balance-item .dealer-name {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .balance-item .balance-value {
+            font-weight: 700;
+            font-size: 1.1rem;
+            padding: 4px 12px;
+            border-radius: 8px;
+        }
+        
+        .balance-item .balance-value.positive {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .balance-item .balance-value.negative {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        
+        .balance-item .balance-value.zero {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+        
+        .vehicle-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.9rem;
+        }
+        
+        .vehicle-item:hover {
+            background: #f0f9ff;
+        }
+        
+        .vehicle-item .vehicle-number {
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+        
+        .vehicle-item .pending-qty {
+            font-weight: 600;
+            color: #dc2626;
+            background: #fee2e2;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+        
+        .section-header {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 12px 16px;
+            font-weight: 700;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        
+        .summary-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        
+        .summary-badge.total {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%);
+            color: white;
+        }
+        
+        .summary-badge.negative-total {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            color: white;
+        }
+        
+        .btn-summary {
+            background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+            border: none;
+            color: white;
+            border-radius: 12px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-summary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(124, 58, 237, 0.4);
+            color: white;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #94a3b8;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -258,9 +435,17 @@
                     <h1 class="mb-2"><i class="bi bi-clipboard-data me-2"></i>Dealer Material Balance</h1>
                     <p class="mb-0 opacity-75">Billed vs Unloaded quantities by dealer</p>
                 </div>
-                <a href="/" class="back-btn text-decoration-none">
-                    <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
-                </a>
+<div class="d-flex gap-2">
+                    <a href="/vehicle_details" class="back-btn text-decoration-none">
+                        <i class="bi bi-truck me-1"></i> Vehicles
+                    </a>
+                    <a href="/unloading_query" class="back-btn text-decoration-none">
+                        <i class="bi bi-search me-1"></i> Unloading Query
+                    </a>
+                    <a href="/" class="back-btn text-decoration-none">
+                        <i class="bi bi-arrow-left me-1"></i> Dashboard
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -274,12 +459,17 @@
                         <label class="form-label fw-bold"><i class="bi bi-calendar3 me-1"></i>Select Date</label>
                         <input type="date" id="reportDate" class="form-control form-control-lg">
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <button class="btn btn-primary btn-lg w-100" onclick="loadReport()">
                             <i class="bi bi-file-earmark-bar-graph me-1"></i> Generate Report
                         </button>
                     </div>
-                    <div class="col-md-4 text-end">
+                    <div class="col-md-3">
+                        <button class="btn btn-summary btn-lg w-100" onclick="showBalanceSummary()" id="summaryBtn" disabled>
+                            <i class="bi bi-pie-chart-fill me-1"></i> Balance Summary
+                        </button>
+                    </div>
+                    <div class="col-md-2 text-end">
                         <div id="loadingSpinner" class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
@@ -339,7 +529,111 @@
         </div>
     </div>
 
+    <!-- Balance Summary Modal -->
+    <div class="modal fade balance-modal" id="balanceSummaryModal" tabindex="-1" aria-labelledby="balanceSummaryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="balanceSummaryModalLabel">
+                        <i class="bi bi-pie-chart-fill me-2"></i>Balance Summary - <span id="modalDate"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs px-3 pt-3" id="balanceTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="ppc-tab" data-bs-toggle="tab" data-bs-target="#ppc-content" type="button" role="tab">
+                                <i class="bi bi-box-fill me-1"></i>PPC <span class="badge bg-primary ms-1" id="ppcCount">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="premium-tab" data-bs-toggle="tab" data-bs-target="#premium-content" type="button" role="tab">
+                                <i class="bi bi-star-fill me-1"></i>Premium <span class="badge bg-warning text-dark ms-1" id="premiumCount">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="opc-tab" data-bs-toggle="tab" data-bs-target="#opc-content" type="button" role="tab">
+                                <i class="bi bi-hexagon-fill me-1"></i>OPC <span class="badge bg-success ms-1" id="opcCount">0</span>
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="balanceTabContent">
+                        <!-- PPC Tab -->
+                        <div class="tab-pane fade show active" id="ppc-content" role="tabpanel">
+                            <div class="row g-0">
+                                <div class="col-md-6 border-end">
+                                    <div class="section-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-people-fill me-2"></i>Dealer Balances</span>
+                                        <span class="summary-badge total" id="ppcTotalBadge">0.00 MT</span>
+                                    </div>
+                                    <div class="balance-list" id="ppcDealerList"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="section-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-truck me-2"></i>Pending Vehicles</span>
+                                        <span class="summary-badge negative-total" id="ppcVehicleBadge">0.00 MT</span>
+                                    </div>
+                                    <div class="balance-list" id="ppcVehicleList"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Premium Tab -->
+                        <div class="tab-pane fade" id="premium-content" role="tabpanel">
+                            <div class="row g-0">
+                                <div class="col-md-6 border-end">
+                                    <div class="section-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-people-fill me-2"></i>Dealer Balances</span>
+                                        <span class="summary-badge total" id="premiumTotalBadge">0.00 MT</span>
+                                    </div>
+                                    <div class="balance-list" id="premiumDealerList"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="section-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-truck me-2"></i>Pending Vehicles</span>
+                                        <span class="summary-badge negative-total" id="premiumVehicleBadge">0.00 MT</span>
+                                    </div>
+                                    <div class="balance-list" id="premiumVehicleList"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- OPC Tab -->
+                        <div class="tab-pane fade" id="opc-content" role="tabpanel">
+                            <div class="row g-0">
+                                <div class="col-md-6 border-end">
+                                    <div class="section-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-people-fill me-2"></i>Dealer Balances</span>
+                                        <span class="summary-badge total" id="opcTotalBadge">0.00 MT</span>
+                                    </div>
+                                    <div class="balance-list" id="opcDealerList"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="section-header d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-truck me-2"></i>Pending Vehicles</span>
+                                        <span class="summary-badge negative-total" id="opcVehicleBadge">0.00 MT</span>
+                                    </div>
+                                    <div class="balance-list" id="opcVehicleList"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" onclick="shareBalanceSummary()">
+                        <i class="bi bi-share-fill me-1"></i> Share as Image
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script>
         // Set default date to today
         document.getElementById('reportDate').valueAsDate = new Date();
@@ -365,9 +659,19 @@
                 document.getElementById('loadingSpinner').style.display = 'none';
                 
                 if (data.success) {
+                    // Store data globally for modal
+                    window.currentReportData = {
+                        dealers: data.dealers,
+                        totals: data.totals,
+                        pendingVehicles: data.pending_vehicles || [],
+                        date: date
+                    };
+                    document.getElementById('summaryBtn').disabled = false;
+                    
                     displayReport(data.dealers, data.totals, date);
                     displayPendingVehicles(data.pending_vehicles || [], date);
                 } else {
+                    document.getElementById('summaryBtn').disabled = true;
                     document.getElementById('reportContainer').innerHTML = `
                         <div class="alert alert-warning text-center">
                             <i class="bi bi-exclamation-triangle me-2"></i>${data.message || 'No data found'}
@@ -719,6 +1023,346 @@
             }
             
             container.innerHTML = html;
+        }
+        
+        // Show Balance Summary Modal
+        function showBalanceSummary() {
+            if (!window.currentReportData) {
+                alert('Please generate a report first');
+                return;
+            }
+            
+            const { dealers, pendingVehicles, date } = window.currentReportData;
+            
+            // Set modal date
+            document.getElementById('modalDate').textContent = date;
+            
+            // Process dealers for each product type (only non-zero balances)
+            const ppcDealers = [];
+            const premiumDealers = [];
+            const opcDealers = [];
+            
+            dealers.forEach(d => {
+                if (Math.abs(d.closing_ppc) > 0.01) {
+                    ppcDealers.push({ name: d.dealer_name, balance: d.closing_ppc });
+                }
+                if (Math.abs(d.closing_premium) > 0.01) {
+                    premiumDealers.push({ name: d.dealer_name, balance: d.closing_premium });
+                }
+                if (Math.abs(d.closing_opc) > 0.01) {
+                    opcDealers.push({ name: d.dealer_name, balance: d.closing_opc });
+                }
+            });
+            
+            // Sort: negative balances first (ascending), then positive (descending)
+            const sortDealers = (arr) => {
+                const negative = arr.filter(d => d.balance < 0).sort((a, b) => a.balance - b.balance);
+                const positive = arr.filter(d => d.balance >= 0).sort((a, b) => b.balance - a.balance);
+                return [...negative, ...positive];
+            };
+            
+            const sortedPPC = sortDealers(ppcDealers);
+            const sortedPremium = sortDealers(premiumDealers);
+            const sortedOPC = sortDealers(opcDealers);
+            
+            // Process pending vehicles for each product type
+            const ppcVehicles = [];
+            const premiumVehicles = [];
+            const opcVehicles = [];
+            
+            pendingVehicles.forEach(v => {
+                const pendingPPC = (v.billed_ppc || 0) - (v.unloaded_ppc || 0);
+                const pendingPrem = (v.billed_premium || 0) - (v.unloaded_premium || 0);
+                const pendingOPC = (v.billed_opc || 0) - (v.unloaded_opc || 0);
+                
+                if (pendingPPC > 0.01) {
+                    ppcVehicles.push({ truck: v.truck_number, pending: pendingPPC, date: v.billing_date });
+                }
+                if (pendingPrem > 0.01) {
+                    premiumVehicles.push({ truck: v.truck_number, pending: pendingPrem, date: v.billing_date });
+                }
+                if (pendingOPC > 0.01) {
+                    opcVehicles.push({ truck: v.truck_number, pending: pendingOPC, date: v.billing_date });
+                }
+            });
+            
+            // Sort vehicles by pending quantity (highest first)
+            ppcVehicles.sort((a, b) => b.pending - a.pending);
+            premiumVehicles.sort((a, b) => b.pending - a.pending);
+            opcVehicles.sort((a, b) => b.pending - a.pending);
+            
+            // Update tab counts
+            document.getElementById('ppcCount').textContent = sortedPPC.length;
+            document.getElementById('premiumCount').textContent = sortedPremium.length;
+            document.getElementById('opcCount').textContent = sortedOPC.length;
+            
+            // Calculate totals
+            const ppcTotal = sortedPPC.reduce((s, d) => s + d.balance, 0);
+            const premiumTotal = sortedPremium.reduce((s, d) => s + d.balance, 0);
+            const opcTotal = sortedOPC.reduce((s, d) => s + d.balance, 0);
+            
+            const ppcVehicleTotal = ppcVehicles.reduce((s, v) => s + v.pending, 0);
+            const premiumVehicleTotal = premiumVehicles.reduce((s, v) => s + v.pending, 0);
+            const opcVehicleTotal = opcVehicles.reduce((s, v) => s + v.pending, 0);
+            
+            // Update badges (convert MT to bags: 1 MT = 20 bags)
+            document.getElementById('ppcTotalBadge').textContent = `${Math.round(ppcTotal * 20)} Bags`;
+            document.getElementById('premiumTotalBadge').textContent = `${Math.round(premiumTotal * 20)} Bags`;
+            document.getElementById('opcTotalBadge').textContent = `${Math.round(opcTotal * 20)} Bags`;
+            
+            document.getElementById('ppcVehicleBadge').textContent = `${Math.round(ppcVehicleTotal * 20)} Bags`;
+            document.getElementById('premiumVehicleBadge').textContent = `${Math.round(premiumVehicleTotal * 20)} Bags`;
+            document.getElementById('opcVehicleBadge').textContent = `${Math.round(opcVehicleTotal * 20)} Bags`;
+            
+            // Render dealer lists
+            document.getElementById('ppcDealerList').innerHTML = renderDealerList(sortedPPC);
+            document.getElementById('premiumDealerList').innerHTML = renderDealerList(sortedPremium);
+            document.getElementById('opcDealerList').innerHTML = renderDealerList(sortedOPC);
+            
+            // Render vehicle lists
+            document.getElementById('ppcVehicleList').innerHTML = renderVehicleList(ppcVehicles);
+            document.getElementById('premiumVehicleList').innerHTML = renderVehicleList(premiumVehicles);
+            document.getElementById('opcVehicleList').innerHTML = renderVehicleList(opcVehicles);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('balanceSummaryModal'));
+            modal.show();
+        }
+        
+        function renderDealerList(dealers) {
+            if (dealers.length === 0) {
+                return `
+                    <div class="empty-state">
+                        <i class="bi bi-check-circle"></i>
+                        <p>No dealers with balance</p>
+                    </div>
+                `;
+            }
+            
+            return dealers.map(d => {
+                const isNegative = d.balance < 0;
+                const valueClass = isNegative ? 'negative' : (Math.abs(d.balance) < 0.01 ? 'zero' : 'positive');
+                const itemClass = isNegative ? 'negative' : '';
+                const bags = Math.round(d.balance * 20);
+                
+                return `
+                    <div class="balance-item ${itemClass}">
+                        <span class="dealer-name">
+                            ${isNegative ? '<i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>' : ''}
+                            ${d.name}
+                        </span>
+                        <span class="balance-value ${valueClass}">${bags} Bags</span>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function renderVehicleList(vehicles) {
+            if (vehicles.length === 0) {
+                return `
+                    <div class="empty-state">
+                        <i class="bi bi-truck"></i>
+                        <p>No pending vehicles</p>
+                    </div>
+                `;
+            }
+            
+            return vehicles.map(v => `
+                <div class="vehicle-item">
+                    <div>
+                        <span class="vehicle-number">${v.truck}</span>
+                        <small class="text-muted ms-2">${v.date}</small>
+                    </div>
+                    <span class="pending-qty">${Math.round(v.pending * 20)} Bags</span>
+                </div>
+            `).join('');
+        }
+        
+        // Share Balance Summary as Image
+        async function shareBalanceSummary() {
+            const modalContent = document.querySelector('#balanceSummaryModal .modal-content');
+            const shareBtn = document.querySelector('#balanceSummaryModal .btn-success');
+            const originalText = shareBtn.innerHTML;
+            
+            try {
+                shareBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Generating...';
+                shareBtn.disabled = true;
+                
+                // Get the active tab content
+                const activeTab = document.querySelector('#balanceTabContent .tab-pane.active');
+                const activeTabId = activeTab.id.replace('-content', '');
+                const tabName = activeTabId.toUpperCase();
+                
+                // Get totals for the active tab
+                const dealerBadge = document.getElementById(`${activeTabId}TotalBadge`).textContent;
+                const vehicleBadge = document.getElementById(`${activeTabId}VehicleBadge`).textContent;
+                
+                // Create a styled container for the image
+                const container = document.createElement('div');
+                container.style.cssText = `
+                    position: fixed;
+                    left: -9999px;
+                    top: 0;
+                    width: 800px;
+                    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+                    padding: 20px;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                `;
+                
+                const date = document.getElementById('modalDate').textContent;
+                
+                // Get dealer and vehicle data from the active tab
+                const dealerList = activeTab.querySelector('.balance-list').cloneNode(true);
+                const vehicleList = activeTab.querySelectorAll('.balance-list')[1]?.cloneNode(true);
+                
+                container.innerHTML = `
+                    <div style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                        <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 20px; text-align: center;">
+                            <h2 style="margin: 0; font-size: 24px;">
+                                <span style="margin-right: 10px;">📊</span>
+                                ${tabName} Balance Summary
+                            </h2>
+                            <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">Date: ${date}</p>
+                        </div>
+                        
+                        <div style="padding: 20px;">
+                            <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                                <div style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; padding: 15px; border-radius: 10px; text-align: center;">
+                                    <div style="font-size: 14px; opacity: 0.9;">Dealer Balance</div>
+                                    <div style="font-size: 28px; font-weight: bold;">${dealerBadge}</div>
+                                </div>
+                                <div style="flex: 1; background: linear-gradient(135deg, #ef4444 0%, #f87171 100%); color: white; padding: 15px; border-radius: 10px; text-align: center;">
+                                    <div style="font-size: 14px; opacity: 0.9;">Pending Vehicles</div>
+                                    <div style="font-size: 28px; font-weight: bold;">${vehicleBadge}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <h4 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-bottom: 15px;">
+                                        👥 Dealer Balances
+                                    </h4>
+                                    <div id="shareableDealerList"></div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <h4 style="color: #dc2626; border-bottom: 2px solid #ef4444; padding-bottom: 10px; margin-bottom: 15px;">
+                                        🚛 Pending Vehicles
+                                    </h4>
+                                    <div id="shareableVehicleList"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="background: #f1f5f9; padding: 10px; text-align: center; color: #64748b; font-size: 12px;">
+                            Generated from DSR Sales Management System
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(container);
+                
+                // Copy dealer list items
+                const dealerItems = activeTab.querySelector('.balance-list').querySelectorAll('.balance-item, .empty-state');
+                const shareableDealerList = container.querySelector('#shareableDealerList');
+                dealerItems.forEach(item => {
+                    const div = document.createElement('div');
+                    const name = item.querySelector('.dealer-name')?.textContent?.trim() || item.textContent;
+                    const value = item.querySelector('.balance-value')?.textContent || '';
+                    const isNegative = item.classList.contains('negative') || value.includes('-');
+                    
+                    if (item.classList.contains('empty-state')) {
+                        div.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 20px;">✓ No dealers with balance</div>`;
+                    } else {
+                        div.style.cssText = `
+                            display: flex; justify-content: space-between; align-items: center;
+                            padding: 8px 12px; margin-bottom: 5px; border-radius: 8px;
+                            background: ${isNegative ? '#fef2f2' : '#f0fdf4'};
+                            border-left: 4px solid ${isNegative ? '#ef4444' : '#22c55e'};
+                        `;
+                        div.innerHTML = `
+                            <span style="color: #374151; font-size: 13px;">${name.replace(/[⚠️]/g, '').trim()}</span>
+                            <span style="font-weight: bold; color: ${isNegative ? '#dc2626' : '#16a34a'}; font-size: 14px;">${value}</span>
+                        `;
+                    }
+                    shareableDealerList.appendChild(div);
+                });
+                
+                // Copy vehicle list items
+                const vehicleItems = activeTab.querySelectorAll('.balance-list')[1]?.querySelectorAll('.vehicle-item, .empty-state') || [];
+                const shareableVehicleList = container.querySelector('#shareableVehicleList');
+                vehicleItems.forEach(item => {
+                    const div = document.createElement('div');
+                    
+                    if (item.classList.contains('empty-state')) {
+                        div.innerHTML = `<div style="text-align: center; color: #94a3b8; padding: 20px;">✓ No pending vehicles</div>`;
+                    } else {
+                        const truck = item.querySelector('.vehicle-number')?.textContent || '';
+                        const date = item.querySelector('.text-muted')?.textContent || '';
+                        const qty = item.querySelector('.pending-qty')?.textContent || '';
+                        
+                        div.style.cssText = `
+                            display: flex; justify-content: space-between; align-items: center;
+                            padding: 8px 12px; margin-bottom: 5px; border-radius: 8px;
+                            background: #fef2f2; border-left: 4px solid #ef4444;
+                        `;
+                        div.innerHTML = `
+                            <span style="color: #374151; font-size: 13px;">
+                                <strong>${truck}</strong> <span style="color: #94a3b8; font-size: 11px;">${date}</span>
+                            </span>
+                            <span style="font-weight: bold; color: #dc2626; font-size: 14px;">${qty}</span>
+                        `;
+                    }
+                    shareableVehicleList.appendChild(div);
+                });
+                
+                // Generate image
+                const canvas = await html2canvas(container, {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#3b82f6'
+                });
+                
+                document.body.removeChild(container);
+                
+                // Convert to blob and share/download
+                canvas.toBlob(async (blob) => {
+                    const fileName = `Balance_Summary_${tabName}_${date}.png`;
+                    
+                    // Try to use Web Share API if available
+                    if (navigator.share && navigator.canShare) {
+                        const file = new File([blob], fileName, { type: 'image/png' });
+                        const shareData = { files: [file] };
+                        
+                        if (navigator.canShare(shareData)) {
+                            try {
+                                await navigator.share(shareData);
+                                shareBtn.innerHTML = originalText;
+                                shareBtn.disabled = false;
+                                return;
+                            } catch (err) {
+                                console.log('Share cancelled or failed, falling back to download');
+                            }
+                        }
+                    }
+                    
+                    // Fallback: Download the image
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    shareBtn.innerHTML = originalText;
+                    shareBtn.disabled = false;
+                }, 'image/png');
+                
+            } catch (error) {
+                console.error('Error generating image:', error);
+                alert('Error generating image. Please try again.');
+                shareBtn.innerHTML = originalText;
+                shareBtn.disabled = false;
+            }
         }
     </script>
 </body>
