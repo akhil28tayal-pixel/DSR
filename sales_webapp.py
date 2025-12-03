@@ -2792,20 +2792,96 @@ def save_vehicle_unloading():
         dealer_code = data.get('dealer_code')
         unloading_dealer = data.get('unloading_dealer')
         unloading_point = data.get('unloading_point')
-        ppc_unloaded = data.get('ppc_unloaded', 0)
-        premium_unloaded = data.get('premium_unloaded', 0)
-        opc_unloaded = data.get('opc_unloaded', 0)
+        ppc_unloaded = data.get('ppc_unloaded', 0) or 0
+        premium_unloaded = data.get('premium_unloaded', 0) or 0
+        opc_unloaded = data.get('opc_unloaded', 0) or 0
         notes = data.get('notes', '')
         is_other_dealer = 1 if data.get('is_other_dealer', False) else 0
         
         if not truck_number or not unloading_date or not unloading_dealer or not unloading_point:
             return jsonify({'success': False, 'message': 'Missing required fields'})
         
-        # Calculate total unloaded quantity
-        total_unloaded = (ppc_unloaded or 0) + (premium_unloaded or 0) + (opc_unloaded or 0)
+        # Calculate total unloaded quantity for this entry
+        total_unloaded = ppc_unloaded + premium_unloaded + opc_unloaded
         
         db = SalesCollectionsDatabase(DB_PATH)
         cursor = db.conn.cursor()
+        
+        # Get total billed quantity for this truck (from sales_data and other_dealers_billing)
+        cursor.execute('''
+            SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                   COALESCE(SUM(opc_quantity), 0), COALESCE(SUM(total_quantity), 0)
+            FROM sales_data 
+            WHERE truck_number = ?
+        ''', (truck_number,))
+        sales_billed = cursor.fetchone()
+        
+        cursor.execute('''
+            SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                   COALESCE(SUM(opc_quantity), 0), COALESCE(SUM(total_quantity), 0)
+            FROM other_dealers_billing 
+            WHERE truck_number = ?
+        ''', (truck_number,))
+        other_billed = cursor.fetchone()
+        
+        # Also check pending_vehicle_unloading (opening balance)
+        cursor.execute('''
+            SELECT COALESCE(SUM(ppc_qty), 0), COALESCE(SUM(premium_qty), 0), 
+                   COALESCE(SUM(opc_qty), 0)
+            FROM pending_vehicle_unloading 
+            WHERE vehicle_number = ?
+        ''', (truck_number,))
+        opening_billed = cursor.fetchone()
+        
+        total_billed_ppc = (sales_billed[0] or 0) + (other_billed[0] or 0) + (opening_billed[0] or 0)
+        total_billed_premium = (sales_billed[1] or 0) + (other_billed[1] or 0) + (opening_billed[1] or 0)
+        total_billed_opc = (sales_billed[2] or 0) + (other_billed[2] or 0) + (opening_billed[2] or 0)
+        total_billed = total_billed_ppc + total_billed_premium + total_billed_opc
+        
+        # Get already unloaded quantity for this truck
+        cursor.execute('''
+            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
+                   COALESCE(SUM(opc_unloaded), 0), COALESCE(SUM(unloaded_quantity), 0)
+            FROM vehicle_unloading 
+            WHERE truck_number = ?
+        ''', (truck_number,))
+        already_unloaded = cursor.fetchone()
+        
+        already_unloaded_ppc = already_unloaded[0] or 0
+        already_unloaded_premium = already_unloaded[1] or 0
+        already_unloaded_opc = already_unloaded[2] or 0
+        already_unloaded_total = already_unloaded[3] or 0
+        
+        # Validate: new unloading + already unloaded should not exceed total billed
+        # Check by product type
+        if (already_unloaded_ppc + ppc_unloaded) > (total_billed_ppc + 0.01):
+            db.close()
+            return jsonify({
+                'success': False, 
+                'message': f'PPC unloading ({already_unloaded_ppc + ppc_unloaded:.2f} MT) exceeds total billed PPC ({total_billed_ppc:.2f} MT) for this vehicle'
+            })
+        
+        if (already_unloaded_premium + premium_unloaded) > (total_billed_premium + 0.01):
+            db.close()
+            return jsonify({
+                'success': False, 
+                'message': f'Premium unloading ({already_unloaded_premium + premium_unloaded:.2f} MT) exceeds total billed Premium ({total_billed_premium:.2f} MT) for this vehicle'
+            })
+        
+        if (already_unloaded_opc + opc_unloaded) > (total_billed_opc + 0.01):
+            db.close()
+            return jsonify({
+                'success': False, 
+                'message': f'OPC unloading ({already_unloaded_opc + opc_unloaded:.2f} MT) exceeds total billed OPC ({total_billed_opc:.2f} MT) for this vehicle'
+            })
+        
+        # Check total
+        if (already_unloaded_total + total_unloaded) > (total_billed + 0.01):
+            db.close()
+            return jsonify({
+                'success': False, 
+                'message': f'Total unloading ({already_unloaded_total + total_unloaded:.2f} MT) exceeds total billed ({total_billed:.2f} MT) for this vehicle'
+            })
         
         # Insert new unloading record (allows multiple unloadings per vehicle)
         cursor.execute('''
