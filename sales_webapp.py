@@ -3008,14 +3008,18 @@ def get_consolidated_vehicles():
         month_year = selected_dt.strftime('%Y-%m')
         
         try:
-            cursor.execute('''
-                SELECT p.vehicle_number, p.billing_date, p.dealer_code, 
-                       p.ppc_qty, p.premium_qty, p.opc_qty
-                FROM pending_vehicle_unloading p
-                WHERE p.month_year = ?
-            ''', (month_year,))
-            
-            pending_data = cursor.fetchall()
+            # Use the opening_balance_map which was already calculated earlier
+            # (includes previous month's closing when no current month data exists)
+            pending_data = []
+            for truck_number, ob_data in opening_balance_map.items():
+                pending_data.append((
+                    truck_number,
+                    ob_data.get('billing_date', 'Previous Month'),
+                    ob_data.get('dealer_code'),
+                    ob_data.get('ppc', 0),
+                    ob_data.get('premium', 0),
+                    ob_data.get('opc', 0)
+                ))
             
             for row in pending_data:
                 truck_number = row[0]
