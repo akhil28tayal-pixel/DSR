@@ -822,22 +822,23 @@ def get_report():
         opening_balances = []
         
         # Get all unique dealers from current month AND previous month
+        # Use string dealer_code to avoid duplicates from int vs string
         all_dealers = set()
         for sale in sales + cumulative_sales:
-            all_dealers.add((sale['dealer_code'], sale['dealer_name']))
+            all_dealers.add((str(sale['dealer_code']), sale['dealer_name']))
         for collection in collections + cumulative_collections:
-            all_dealers.add((collection['dealer_code'], collection['dealer_name']))
+            all_dealers.add((str(collection['dealer_code']), collection['dealer_name']))
         
         # Also include dealers from opening_balances_map (includes previous month dealers)
         for key in opening_balances_map.keys():
             parts = key.split('_', 1)
             if len(parts) == 2:
-                all_dealers.add((parts[0], parts[1]))
+                all_dealers.add((str(parts[0]), parts[1]))
         
         for dealer_code, dealer_name in all_dealers:
             key = f"{dealer_code}_{dealer_name}"
             opening_balances.append({
-                'dealer_code': dealer_code,
+                'dealer_code': str(dealer_code),
                 'dealer_name': dealer_name,
                 'opening_balance': round(opening_balances_map.get(key, 0), 2)
             })
