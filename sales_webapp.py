@@ -515,8 +515,15 @@ def calculate_month_closing_balances(month_year):
 def get_opening_balances_with_auto_calculation(month_year):
     """Get opening balances with auto-calculation from previous month's closing balances"""
     try:
+        from dateutil.relativedelta import relativedelta
+        
         db = SalesCollectionsDatabase(DB_PATH)
         cursor = db.conn.cursor()
+        
+        # Calculate previous month
+        current_month_dt = datetime.strptime(month_year + '-01', '%Y-%m-%d')
+        prev_month_dt = current_month_dt - relativedelta(months=1)
+        prev_month_year = prev_month_dt.strftime('%Y-%m')
         
         # First, get manual opening balances for this month
         cursor.execute('''
@@ -526,42 +533,100 @@ def get_opening_balances_with_auto_calculation(month_year):
         ''', (month_year,))
         
         manual_balances = {}
+        has_manual_balances = False
         for row in cursor.fetchall():
             key = f"{row[0]}_{row[1]}"
             manual_balances[key] = round(row[2], 2)
+            has_manual_balances = True
         
-        # Get all dealers who have transactions in this month
+        # Get all dealers who have transactions in this month OR previous month
         cursor.execute('''
             SELECT DISTINCT dealer_code, dealer_name FROM (
                 SELECT dealer_code, dealer_name FROM sales_data WHERE strftime('%Y-%m', sale_date) = ?
                 UNION
                 SELECT dealer_code, dealer_name FROM collections_data WHERE strftime('%Y-%m', posting_date) = ?
+                UNION
+                SELECT dealer_code, dealer_name FROM sales_data WHERE strftime('%Y-%m', sale_date) = ?
+                UNION
+                SELECT dealer_code, dealer_name FROM collections_data WHERE strftime('%Y-%m', posting_date) = ?
+                UNION
+                SELECT dealer_code, dealer_name FROM opening_balances WHERE month_year = ?
             )
-        ''', (month_year, month_year))
+        ''', (month_year, month_year, prev_month_year, prev_month_year, prev_month_year))
         
         all_dealers = cursor.fetchall()
         
-        # For dealers without manual opening balances, try to get from previous month's closing
+        # For dealers without manual opening balances, calculate from previous month's closing
         result_balances = {}
-        previous_month = get_previous_month(month_year)
         
-        if previous_month:
-            previous_closing = calculate_month_closing_balances(previous_month)
-        else:
-            previous_closing = {}
-        
-        for dealer_code, dealer_name in all_dealers:
-            key = f"{dealer_code}_{dealer_name}"
+        # If no manual balances for current month, calculate previous month's closing for all dealers
+        if not has_manual_balances:
+            # Get previous month's opening balances
+            cursor.execute('''
+                SELECT dealer_code, dealer_name, opening_balance 
+                FROM opening_balances 
+                WHERE month_year = ?
+            ''', (prev_month_year,))
             
-            if key in manual_balances:
-                # Use manual opening balance
-                result_balances[key] = round(manual_balances[key], 2)
-            elif key in previous_closing:
-                # Use previous month's closing balance
-                result_balances[key] = round(previous_closing.get(key, 0), 2)
+            prev_opening = {}
+            for row in cursor.fetchall():
+                key = f"{row[0]}_{row[1]}"
+                prev_opening[key] = row[2] or 0
+            
+            # Get previous month's sales
+            cursor.execute('''
+                SELECT dealer_code, dealer_name, SUM(total_purchase_value) as total_sales
+                FROM sales_data 
+                WHERE strftime('%Y-%m', sale_date) = ?
+                GROUP BY dealer_code, dealer_name
+            ''', (prev_month_year,))
+            
+            prev_sales = {}
+            for row in cursor.fetchall():
+                key = f"{row[0]}_{row[1]}"
+                prev_sales[key] = row[2] or 0
+            
+            # Get previous month's collections
+            cursor.execute('''
+                SELECT dealer_code, dealer_name, SUM(amount) as total_collections
+                FROM collections_data 
+                WHERE strftime('%Y-%m', posting_date) = ?
+                GROUP BY dealer_code, dealer_name
+            ''', (prev_month_year,))
+            
+            prev_collections = {}
+            for row in cursor.fetchall():
+                key = f"{row[0]}_{row[1]}"
+                prev_collections[key] = row[2] or 0
+            
+            # Calculate previous month closing = opening + sales - collections
+            for dealer_code, dealer_name in all_dealers:
+                key = f"{dealer_code}_{dealer_name}"
+                opening = prev_opening.get(key, 0)
+                sales = prev_sales.get(key, 0)
+                collections = prev_collections.get(key, 0)
+                closing = opening + sales - collections
+                result_balances[key] = round(closing, 2)
+        else:
+            # Use manual balances and calculate for missing dealers
+            previous_month = get_previous_month(month_year)
+            if previous_month:
+                previous_closing = calculate_month_closing_balances(previous_month)
             else:
-                # Default to 0
-                result_balances[key] = 0.0
+                previous_closing = {}
+            
+            for dealer_code, dealer_name in all_dealers:
+                key = f"{dealer_code}_{dealer_name}"
+                
+                if key in manual_balances:
+                    # Use manual opening balance
+                    result_balances[key] = round(manual_balances[key], 2)
+                elif key in previous_closing:
+                    # Use previous month's closing balance
+                    result_balances[key] = round(previous_closing.get(key, 0), 2)
+                else:
+                    # Default to 0
+                    result_balances[key] = 0.0
         
         db.close()
         return result_balances
@@ -696,12 +761,18 @@ def get_report():
         opening_balances_map = get_opening_balances_with_auto_calculation(month_year)
         opening_balances = []
         
-        # Get all unique dealers
+        # Get all unique dealers from current month AND previous month
         all_dealers = set()
         for sale in sales + cumulative_sales:
             all_dealers.add((sale['dealer_code'], sale['dealer_name']))
         for collection in collections + cumulative_collections:
             all_dealers.add((collection['dealer_code'], collection['dealer_name']))
+        
+        # Also include dealers from opening_balances_map (includes previous month dealers)
+        for key in opening_balances_map.keys():
+            parts = key.split('_', 1)
+            if len(parts) == 2:
+                all_dealers.add((parts[0], parts[1]))
         
         for dealer_code, dealer_name in all_dealers:
             key = f"{dealer_code}_{dealer_name}"
