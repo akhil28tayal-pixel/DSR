@@ -2529,7 +2529,7 @@ def get_consolidated_vehicles():
                     'dealers': row[6]
                 })
         
-        # Get ALL unloading details for trucks billed today (not just today's unloading)
+        # Get ALL unloading details for trucks billed today (current month only)
         all_unloading_map = {}
         if truck_numbers_today:
             placeholders = ','.join(['?' for _ in truck_numbers_today])
@@ -2538,8 +2538,8 @@ def get_consolidated_vehicles():
                        ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                        notes, dealer_code, is_other_dealer, unloading_date
                 FROM vehicle_unloading 
-                WHERE truck_number IN ({placeholders}) AND unloading_date <= ?
-            ''', (*truck_numbers_today, selected_date))
+                WHERE truck_number IN ({placeholders}) AND unloading_date >= ? AND unloading_date <= ?
+            ''', (*truck_numbers_today, month_start, selected_date))
             
             for row in cursor.fetchall():
                 truck = row[1]
@@ -2892,14 +2892,14 @@ def get_consolidated_vehicles():
                 opc_qty = row[5] or 0
                 total_qty = ppc_qty + premium_qty + opc_qty
                 
-                # Get unloading details for this truck (any date up to selected date)
+                # Get unloading details for this truck (current month only)
                 cursor.execute('''
                     SELECT id, truck_number, unloading_dealer, unloading_point, 
                            ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                            notes, dealer_code, is_other_dealer, unloading_date
                     FROM vehicle_unloading 
-                    WHERE truck_number = ? AND unloading_date <= ?
-                ''', (truck_number, selected_date))
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck_number, month_start, selected_date))
                 
                 pending_unloading = []
                 for urow in cursor.fetchall():
@@ -3060,16 +3060,16 @@ def get_consolidated_vehicles():
                 truck_total_billed[truck]['premium'] += row[4] or 0
                 truck_total_billed[truck]['opc'] += row[5] or 0
             
-            # Get unloading for all trucks up to selected date
+            # Get unloading for all trucks (current month only)
             cursor.execute('''
                 SELECT truck_number,
                        SUM(ppc_unloaded) as ppc,
                        SUM(premium_unloaded) as premium,
                        SUM(opc_unloaded) as opc
                 FROM vehicle_unloading
-                WHERE unloading_date <= ?
+                WHERE unloading_date >= ? AND unloading_date <= ?
                 GROUP BY truck_number
-            ''', (selected_date,))
+            ''', (month_start, selected_date))
             
             truck_unloaded = {}
             for row in cursor.fetchall():
@@ -3151,12 +3151,12 @@ def get_consolidated_vehicles():
                 # We need to calculate how much of today's unloading was attributed to this billing
                 unloaded_on_selected_date = False
                 
-                # Get unloading BEFORE selected date for this truck
+                # Get unloading BEFORE selected date for this truck (current month only)
                 cursor.execute('''
                     SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
                     FROM vehicle_unloading 
-                    WHERE truck_number = ? AND unloading_date < ?
-                ''', (truck_number, selected_date))
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                ''', (truck_number, month_start, selected_date))
                 before_today = cursor.fetchone()
                 before_ppc = (before_today[0] or 0) if before_today else 0
                 before_premium = (before_today[1] or 0) if before_today else 0
