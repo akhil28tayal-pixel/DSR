@@ -34,6 +34,59 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def get_depot_abbreviation(plant_description):
+    """Get 4-letter abbreviation for depot/plant description"""
+    if not plant_description:
+        return None
+    
+    # Common depot abbreviations mapping
+    depot_map = {
+        'DL NASIRPUR TR': 'NASR',
+        'DL OKHLA': 'OKHL',
+        'DL NARELA': 'NARE',
+        'DL MUNDKA': 'MUND',
+        'DL PATPARGANJ': 'PATP',
+        'DL SHAHDARA': 'SHAH',
+        'GGN MANESAR': 'MANE',
+        'GGN SOHNA': 'SOHN',
+        'FBD BALLABGARH': 'BALL',
+        'FBD FARIDABAD': 'FARI',
+        'NDA NOIDA': 'NOID',
+        'NDA GREATER NOIDA': 'GNOI',
+        'GZB GHAZIABAD': 'GHAZ',
+        'DADRI': 'DADR',
+        'PALWAL': 'PALW',
+        'REWARI': 'REWA',
+        'ROHTAK': 'ROHT',
+        'SONIPAT': 'SONI',
+        'PANIPAT': 'PANI',
+        'KARNAL': 'KARN',
+        'AMBALA': 'AMBA',
+        'JIND': 'JIND',
+        'HISAR': 'HISA',
+        'BHIWANI': 'BHIW',
+    }
+    
+    plant_upper = plant_description.upper().strip()
+    
+    # Check for exact match first
+    if plant_upper in depot_map:
+        return depot_map[plant_upper]
+    
+    # Check for partial match
+    for key, abbr in depot_map.items():
+        if key in plant_upper or plant_upper in key:
+            return abbr
+    
+    # Generate abbreviation from first 4 characters of significant words
+    words = plant_upper.replace('TR', '').replace('DEPOT', '').replace('PLANT', '').split()
+    if words:
+        # Take first 4 chars of the most significant word (usually the location name)
+        significant_word = max(words, key=len) if words else plant_upper
+        return significant_word[:4].upper()
+    
+    return plant_upper[:4].upper() if len(plant_upper) >= 4 else plant_upper.upper()
+
 def categorize_product(product_desc):
     """Categorize product into PPC, Premium, or OPC based on description"""
     product_desc = str(product_desc).upper()
@@ -71,6 +124,9 @@ def process_new_sales_format(df):
                 dealer_name = str(first_row['Customer Name/Sold To']).strip()
                 truck_number = str(first_row['Truck Number']).strip()
                 plant_depot = str(first_row['Plant/Depot']).strip()
+                plant_description = str(first_row.get('Plant Description', '')).strip()
+                if plant_description.lower() in ['nan', 'none', '']:
+                    plant_description = None
                 
                 # Initialize quantities and values
                 ppc_quantity = 0.0
@@ -106,12 +162,12 @@ def process_new_sales_format(df):
                     (sale_date, dealer_code, dealer_name, invoice_number, 
                      ppc_quantity, premium_quantity, opc_quantity, total_quantity, 
                      ppc_purchase_value, premium_purchase_value, opc_purchase_value, total_purchase_value, 
-                     truck_number, plant_depot)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     truck_number, plant_depot, plant_description)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (sale_date, dealer_code, dealer_name, invoice_number,
                       ppc_quantity, premium_quantity, opc_quantity, total_quantity, 
                       ppc_purchase_value, premium_purchase_value, opc_purchase_value, total_purchase_value,
-                      truck_number, plant_depot))
+                      truck_number, plant_depot, plant_description))
                 
                 successful_invoices += 1
                 
@@ -1078,7 +1134,12 @@ def dealer_balance():
     return render_template('dealer_balance.html')
 
 def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer=False, dealer_code=None):
-    """Calculate opening balance for a dealer using manual opening balance + cumulative transactions"""
+    """Calculate opening balance for a dealer using manual opening balance + cumulative transactions
+    
+    If no manual opening balance exists for the current month, it calculates from previous month's closing.
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
     
     # Get the month of the selected date
     month_year = before_date[:7]  # Extract YYYY-MM from date
@@ -1086,6 +1147,8 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
     
     # Start with manual opening balance from admin page (for 1st of month)
     manual_opening = {'ppc': 0, 'premium': 0, 'opc': 0}
+    has_manual_opening = False
+    
     try:
         row = None
         # For "Other" dealers, always match by dealer_name
@@ -1123,9 +1186,114 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
                 'premium': row[1] or 0,
                 'opc': row[2] or 0
             }
+            has_manual_opening = True
     except Exception as e:
         # Table might not exist yet
         pass
+    
+    # If no manual opening balance for current month, calculate from previous month's closing
+    if not has_manual_opening:
+        try:
+            # Calculate previous month
+            current_month = datetime.strptime(month_year + '-01', '%Y-%m-%d')
+            prev_month = current_month - relativedelta(months=1)
+            prev_month_year = prev_month.strftime('%Y-%m')
+            prev_month_start = prev_month_year + '-01'
+            prev_month_end = current_month.strftime('%Y-%m-%d')  # First day of current month
+            
+            # Get previous month's opening balance (manual)
+            prev_opening = {'ppc': 0, 'premium': 0, 'opc': 0}
+            if is_other_dealer:
+                cursor.execute('''
+                    SELECT ppc_qty, premium_qty, opc_qty
+                    FROM opening_material_balance
+                    WHERE month_year = ? AND dealer_name = ?
+                ''', (prev_month_year, dealer_name))
+                prev_row = cursor.fetchone()
+            else:
+                prev_row = None
+                if dealer_code:
+                    cursor.execute('''
+                        SELECT ppc_qty, premium_qty, opc_qty
+                        FROM opening_material_balance
+                        WHERE month_year = ? AND dealer_code = ?
+                    ''', (prev_month_year, str(dealer_code)))
+                    prev_row = cursor.fetchone()
+                if not prev_row:
+                    cursor.execute('''
+                        SELECT ppc_qty, premium_qty, opc_qty
+                        FROM opening_material_balance
+                        WHERE month_year = ? AND dealer_name = ?
+                    ''', (prev_month_year, dealer_name))
+                    prev_rows = cursor.fetchall()
+                    if len(prev_rows) == 1:
+                        prev_row = prev_rows[0]
+            
+            if prev_row:
+                prev_opening = {
+                    'ppc': prev_row[0] or 0,
+                    'premium': prev_row[1] or 0,
+                    'opc': prev_row[2] or 0
+                }
+            
+            # Get previous month's billed
+            if not is_other_dealer:
+                if dealer_code:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), 
+                               COALESCE(SUM(premium_quantity), 0), 
+                               COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data 
+                        WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (dealer_code, prev_month_start, prev_month_end))
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), 
+                               COALESCE(SUM(premium_quantity), 0), 
+                               COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data 
+                        WHERE dealer_name = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (dealer_name, prev_month_start, prev_month_end))
+            else:
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), 
+                           COALESCE(SUM(premium_quantity), 0), 
+                           COALESCE(SUM(opc_quantity), 0)
+                    FROM other_dealers_billing 
+                    WHERE dealer_name = ? AND sale_date >= ? AND sale_date < ?
+                ''', (dealer_name, prev_month_start, prev_month_end))
+            
+            prev_billed = cursor.fetchone()
+            
+            # Get previous month's unloaded
+            if dealer_code and not is_other_dealer:
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), 
+                           COALESCE(SUM(premium_unloaded), 0), 
+                           COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading 
+                    WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date < ?
+                ''', (dealer_code, prev_month_start, prev_month_end))
+            else:
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), 
+                           COALESCE(SUM(premium_unloaded), 0), 
+                           COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading 
+                    WHERE unloading_dealer = ? AND unloading_date >= ? AND unloading_date < ?
+                ''', (dealer_name, prev_month_start, prev_month_end))
+            
+            prev_unloaded = cursor.fetchone()
+            
+            # Previous month closing = opening + billed - unloaded
+            manual_opening = {
+                'ppc': prev_opening['ppc'] + (prev_billed[0] or 0) - (prev_unloaded[0] or 0),
+                'premium': prev_opening['premium'] + (prev_billed[1] or 0) - (prev_unloaded[1] or 0),
+                'opc': prev_opening['opc'] + (prev_billed[2] or 0) - (prev_unloaded[2] or 0)
+            }
+        except Exception as e:
+            # If calculation fails, use 0
+            pass
     
     # Get cumulative billed from month start to before_date (within the month)
     if not is_other_dealer:
@@ -1214,14 +1382,26 @@ def get_dealer_balance():
         # Get ALL dealers who have any activity (opening balance, billed, or unloaded)
         all_dealers = {}  # {dealer_code: {'dealer_name': name, 'is_other': False}}
         
+        # Calculate previous month for fallback
+        from dateutil.relativedelta import relativedelta
+        current_month_dt = datetime.strptime(month_year + '-01', '%Y-%m-%d')
+        prev_month_dt = current_month_dt - relativedelta(months=1)
+        prev_month_year = prev_month_dt.strftime('%Y-%m')
+        prev_month_start = prev_month_year + '-01'
+        prev_month_end = current_month_dt.strftime('%Y-%m-%d')
+        
         # 1. Get dealers from opening_material_balance for this month
+        has_current_month_opening = False
         try:
             cursor.execute('''
                 SELECT dealer_code, dealer_name, dealer_type
                 FROM opening_material_balance
                 WHERE month_year = ?
             ''', (month_year,))
-            for row in cursor.fetchall():
+            rows = cursor.fetchall()
+            if rows:
+                has_current_month_opening = True
+            for row in rows:
                 dealer_code = str(row[0])
                 is_other = row[2] == 'Other'
                 dealer_name = row[1] or f'Dealer {dealer_code}'
@@ -1236,6 +1416,84 @@ def get_dealer_balance():
                 }
         except:
             pass
+        
+        # 1b. If no opening balance for current month, also get dealers from previous month
+        # (they may have closing balance that carries forward)
+        if not has_current_month_opening:
+            try:
+                cursor.execute('''
+                    SELECT dealer_code, dealer_name, dealer_type
+                    FROM opening_material_balance
+                    WHERE month_year = ?
+                ''', (prev_month_year,))
+                for row in cursor.fetchall():
+                    dealer_code = str(row[0])
+                    is_other = row[2] == 'Other'
+                    dealer_name = row[1] or f'Dealer {dealer_code}'
+                    if is_other:
+                        dealer_key = dealer_name
+                    else:
+                        dealer_key = dealer_code
+                    if dealer_key not in all_dealers:
+                        all_dealers[dealer_key] = {
+                            'dealer_name': dealer_name,
+                            'is_other': is_other
+                        }
+            except:
+                pass
+            
+            # Also get dealers who had activity in previous month (sales or unloading)
+            try:
+                cursor.execute('''
+                    SELECT DISTINCT dealer_code, dealer_name
+                    FROM sales_data 
+                    WHERE sale_date >= ? AND sale_date < ?
+                ''', (prev_month_start, prev_month_end))
+                for row in cursor.fetchall():
+                    dealer_code = str(row[0])
+                    if dealer_code not in all_dealers:
+                        all_dealers[dealer_code] = {
+                            'dealer_name': row[1],
+                            'is_other': False
+                        }
+            except:
+                pass
+            
+            try:
+                cursor.execute('''
+                    SELECT DISTINCT dealer_code, unloading_dealer, is_other_dealer
+                    FROM vehicle_unloading 
+                    WHERE unloading_date >= ? AND unloading_date < ?
+                ''', (prev_month_start, prev_month_end))
+                for row in cursor.fetchall():
+                    is_other = bool(row[2])
+                    if is_other or not row[0] or row[0] == 'OTHER':
+                        dealer_key = row[1]
+                    else:
+                        dealer_key = str(row[0])
+                    if dealer_key not in all_dealers:
+                        all_dealers[dealer_key] = {
+                            'dealer_name': row[1],
+                            'is_other': is_other
+                        }
+            except:
+                pass
+            
+            try:
+                cursor.execute('''
+                    SELECT DISTINCT dealer_name
+                    FROM other_dealers_billing 
+                    WHERE sale_date >= ? AND sale_date < ?
+                ''', (prev_month_start, prev_month_end))
+                for row in cursor.fetchall():
+                    dealer_name = row[0]
+                    if dealer_name not in all_dealers:
+                        all_dealers[dealer_name] = {
+                            'dealer_name': dealer_name,
+                            'is_other': True
+                        }
+            except:
+                pass
         
         # 2. Get dealers from sales_data (any date in month up to selected date)
         cursor.execute('''
@@ -1515,16 +1773,16 @@ def get_dealer_balance():
         
         billing_data = cursor.fetchall()
         
-        # Get all unloading aggregated by truck
+        # Get all unloading aggregated by truck for current month only
         cursor.execute('''
             SELECT truck_number,
                    SUM(ppc_unloaded) as unloaded_ppc,
                    SUM(premium_unloaded) as unloaded_premium,
                    SUM(opc_unloaded) as unloaded_opc
             FROM vehicle_unloading
-            WHERE unloading_date <= ?
+            WHERE unloading_date >= ? AND unloading_date <= ?
             GROUP BY truck_number
-        ''', (selected_date,))
+        ''', (month_start, selected_date))
         
         unloading_map_pending = {}
         for row in cursor.fetchall():
@@ -1541,13 +1799,17 @@ def get_dealer_balance():
         
         # First, get opening balance vehicles to include in cumulative billing
         opening_balance_vehicles = {}
+        has_current_month_pending = False
         try:
             cursor.execute('''
                 SELECT vehicle_number, ppc_qty, premium_qty, opc_qty
                 FROM pending_vehicle_unloading
                 WHERE month_year = ?
             ''', (month_year,))
-            for orow in cursor.fetchall():
+            rows = cursor.fetchall()
+            if rows:
+                has_current_month_pending = True
+            for orow in rows:
                 truck = orow[0]
                 opening_balance_vehicles[truck] = {
                     'ppc': orow[1] or 0,
@@ -1579,6 +1841,148 @@ def get_dealer_balance():
                 }
         except:
             pass
+        
+        # If no pending vehicles for current month, calculate from previous month's closing
+        if not has_current_month_pending:
+            try:
+                # Get previous month's pending vehicles and calculate their closing balance
+                cursor.execute('''
+                    SELECT vehicle_number, ppc_qty, premium_qty, opc_qty
+                    FROM pending_vehicle_unloading
+                    WHERE month_year = ?
+                ''', (prev_month_year,))
+                
+                for orow in cursor.fetchall():
+                    truck = orow[0]
+                    prev_opening_ppc = orow[1] or 0
+                    prev_opening_premium = orow[2] or 0
+                    prev_opening_opc = orow[3] or 0
+                    
+                    # Get previous month's billing for this truck
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck, prev_month_start, prev_month_end))
+                    prev_billed = cursor.fetchone()
+                    
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM other_dealers_billing
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck, prev_month_start, prev_month_end))
+                    prev_other_billed = cursor.fetchone()
+                    
+                    # Get previous month's unloading for this truck
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                    ''', (truck, prev_month_start, prev_month_end))
+                    prev_unloaded = cursor.fetchone()
+                    
+                    # Calculate closing balance (which is opening for current month)
+                    closing_ppc = prev_opening_ppc + (prev_billed[0] or 0) + (prev_other_billed[0] or 0) - (prev_unloaded[0] or 0)
+                    closing_premium = prev_opening_premium + (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
+                    closing_opc = prev_opening_opc + (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
+                    
+                    # Only add if there's pending material
+                    if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
+                        opening_balance_vehicles[truck] = {
+                            'ppc': closing_ppc,
+                            'premium': closing_premium,
+                            'opc': closing_opc
+                        }
+                        truck_cumulative_billed[truck] = {
+                            'ppc': closing_ppc,
+                            'premium': closing_premium,
+                            'opc': closing_opc
+                        }
+                        truck_unloading_consumed[truck] = {'ppc': 0, 'premium': 0, 'opc': 0}
+                        
+                        # Get unloading for this truck in current month
+                        unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
+                        
+                        # Attribute unloading to opening balance first (FIFO)
+                        opening_unloaded_ppc = min(closing_ppc, unloaded['ppc'])
+                        opening_unloaded_premium = min(closing_premium, unloaded['premium'])
+                        opening_unloaded_opc = min(closing_opc, unloaded['opc'])
+                        
+                        truck_unloading_consumed[truck] = {
+                            'ppc': opening_unloaded_ppc,
+                            'premium': opening_unloaded_premium,
+                            'opc': opening_unloaded_opc
+                        }
+                
+                # Also check for vehicles billed in previous month (not in pending_vehicle_unloading)
+                cursor.execute('''
+                    SELECT DISTINCT truck_number FROM sales_data
+                    WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
+                    UNION
+                    SELECT DISTINCT truck_number FROM other_dealers_billing
+                    WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
+                ''', (prev_month_start, prev_month_end, prev_month_start, prev_month_end))
+                
+                for (truck,) in cursor.fetchall():
+                    if truck in opening_balance_vehicles:
+                        continue  # Already processed
+                    
+                    # Get previous month's billing for this truck
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck, prev_month_start, prev_month_end))
+                    prev_billed = cursor.fetchone()
+                    
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM other_dealers_billing
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck, prev_month_start, prev_month_end))
+                    prev_other_billed = cursor.fetchone()
+                    
+                    # Get previous month's unloading for this truck
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                    ''', (truck, prev_month_start, prev_month_end))
+                    prev_unloaded = cursor.fetchone()
+                    
+                    # Calculate closing balance
+                    closing_ppc = (prev_billed[0] or 0) + (prev_other_billed[0] or 0) - (prev_unloaded[0] or 0)
+                    closing_premium = (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
+                    closing_opc = (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
+                    
+                    # Only add if there's pending material
+                    if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
+                        opening_balance_vehicles[truck] = {
+                            'ppc': closing_ppc,
+                            'premium': closing_premium,
+                            'opc': closing_opc
+                        }
+                        truck_cumulative_billed[truck] = {
+                            'ppc': closing_ppc,
+                            'premium': closing_premium,
+                            'opc': closing_opc
+                        }
+                        truck_unloading_consumed[truck] = {'ppc': 0, 'premium': 0, 'opc': 0}
+                        
+                        # Get unloading for this truck in current month
+                        unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
+                        
+                        opening_unloaded_ppc = min(closing_ppc, unloaded['ppc'])
+                        opening_unloaded_premium = min(closing_premium, unloaded['premium'])
+                        opening_unloaded_opc = min(closing_opc, unloaded['opc'])
+                        
+                        truck_unloading_consumed[truck] = {
+                            'ppc': opening_unloaded_ppc,
+                            'premium': opening_unloaded_premium,
+                            'opc': opening_unloaded_opc
+                        }
+            except:
+                pass
         
         for row in billing_data:
             truck_number = row[0]
@@ -1637,57 +2041,100 @@ def get_dealer_balance():
                 })
         
         # Also get manually added pending vehicles from opening_material_balance page
-        try:
-            cursor.execute('''
-                SELECT p.vehicle_number, p.billing_date, p.dealer_code, 
-                       p.ppc_qty, p.premium_qty, p.opc_qty,
-                       COALESCE(u.unloaded_ppc, 0), COALESCE(u.unloaded_premium, 0), COALESCE(u.unloaded_opc, 0)
-                FROM pending_vehicle_unloading p
-                LEFT JOIN (
-                    SELECT truck_number,
-                           SUM(ppc_unloaded) as unloaded_ppc,
-                           SUM(premium_unloaded) as unloaded_premium,
-                           SUM(opc_unloaded) as unloaded_opc
-                    FROM vehicle_unloading
-                    WHERE unloading_date <= ?
-                    GROUP BY truck_number
-                ) u ON p.vehicle_number = u.truck_number
-                WHERE p.month_year = ?
-            ''', (selected_date, month_year))
-            
-            # Get dealer names for manual vehicles
-            for row in cursor.fetchall():
-                dealer_code = row[2]
-                # Look up dealer name
-                cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
-                dealer_row = cursor.fetchone()
-                dealer_name = dealer_row[0] if dealer_row else f'Dealer {dealer_code}'
+        # If no current month pending vehicles, add from opening_balance_vehicles calculated earlier
+        if has_current_month_pending:
+            try:
+                cursor.execute('''
+                    SELECT p.vehicle_number, p.billing_date, p.dealer_code, 
+                           p.ppc_qty, p.premium_qty, p.opc_qty,
+                           COALESCE(u.unloaded_ppc, 0), COALESCE(u.unloaded_premium, 0), COALESCE(u.unloaded_opc, 0)
+                    FROM pending_vehicle_unloading p
+                    LEFT JOIN (
+                        SELECT truck_number,
+                               SUM(ppc_unloaded) as unloaded_ppc,
+                               SUM(premium_unloaded) as unloaded_premium,
+                               SUM(opc_unloaded) as unloaded_opc
+                        FROM vehicle_unloading
+                        WHERE unloading_date <= ?
+                        GROUP BY truck_number
+                    ) u ON p.vehicle_number = u.truck_number
+                    WHERE p.month_year = ?
+                ''', (selected_date, month_year))
                 
-                billed_ppc = row[3] or 0
-                billed_premium = row[4] or 0
-                billed_opc = row[5] or 0
-                unloaded_ppc = row[6] or 0
-                unloaded_premium = row[7] or 0
-                unloaded_opc = row[8] or 0
+                # Get dealer names for manual vehicles
+                for row in cursor.fetchall():
+                    dealer_code = row[2]
+                    # Look up dealer name
+                    cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
+                    dealer_row = cursor.fetchone()
+                    dealer_name = dealer_row[0] if dealer_row else f'Dealer {dealer_code}'
+                    
+                    billed_ppc = row[3] or 0
+                    billed_premium = row[4] or 0
+                    billed_opc = row[5] or 0
+                    unloaded_ppc = row[6] or 0
+                    unloaded_premium = row[7] or 0
+                    unloaded_opc = row[8] or 0
+                    
+                    # Only add if there's pending material
+                    pending_total = (billed_ppc - unloaded_ppc) + (billed_premium - unloaded_premium) + (billed_opc - unloaded_opc)
+                    if pending_total > 0.01:
+                        pending_vehicles.append({
+                            'truck_number': row[0],
+                            'billing_date': row[1] or 'Previous Month',
+                            'dealer_name': dealer_name,
+                            'billed_ppc': billed_ppc,
+                            'billed_premium': billed_premium,
+                            'billed_opc': billed_opc,
+                            'unloaded_ppc': unloaded_ppc,
+                            'unloaded_premium': unloaded_premium,
+                            'unloaded_opc': unloaded_opc,
+                            'is_manual': True
+                        })
+            except Exception as e:
+                # Table might not exist
+                pass
+        else:
+            # Add pending vehicles from previous month's closing (calculated in opening_balance_vehicles)
+            # These need to be added separately as "Previous Month" entries
+            for truck, balance in opening_balance_vehicles.items():
+                # Get unloading for this truck in current month
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck, month_start, selected_date))
+                current_unloaded = cursor.fetchone()
+                
+                unloaded_ppc = current_unloaded[0] or 0
+                unloaded_premium = current_unloaded[1] or 0
+                unloaded_opc = current_unloaded[2] or 0
+                
+                pending_ppc = balance['ppc'] - unloaded_ppc
+                pending_premium = balance['premium'] - unloaded_premium
+                pending_opc = balance['opc'] - unloaded_opc
                 
                 # Only add if there's pending material
-                pending_total = (billed_ppc - unloaded_ppc) + (billed_premium - unloaded_premium) + (billed_opc - unloaded_opc)
-                if pending_total > 0.01:
+                if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
+                    # Get dealer name from previous month's billing
+                    cursor.execute('''
+                        SELECT dealer_name FROM sales_data WHERE truck_number = ? ORDER BY sale_date DESC LIMIT 1
+                    ''', (truck,))
+                    dealer_row = cursor.fetchone()
+                    dealer_name = dealer_row[0] if dealer_row else 'Unknown'
+                    
                     pending_vehicles.append({
-                        'truck_number': row[0],
-                        'billing_date': row[1] or 'Previous Month',
+                        'truck_number': truck,
+                        'billing_date': 'Previous Month',
                         'dealer_name': dealer_name,
-                        'billed_ppc': billed_ppc,
-                        'billed_premium': billed_premium,
-                        'billed_opc': billed_opc,
+                        'billed_ppc': balance['ppc'],
+                        'billed_premium': balance['premium'],
+                        'billed_opc': balance['opc'],
                         'unloaded_ppc': unloaded_ppc,
                         'unloaded_premium': unloaded_premium,
                         'unloaded_opc': unloaded_opc,
                         'is_manual': True
                     })
-        except Exception as e:
-            # Table might not exist
-            pass
         
         db.close()
         
@@ -1866,7 +2313,7 @@ def get_consolidated_vehicles():
             SELECT truck_number, invoice_number, dealer_code, dealer_name,
                    ppc_quantity, premium_quantity, opc_quantity, total_quantity,
                    ppc_purchase_value, premium_purchase_value, opc_purchase_value, total_purchase_value,
-                   plant_depot, sale_date
+                   plant_depot, sale_date, plant_description
             FROM sales_data 
             WHERE sale_date = ? AND truck_number IS NOT NULL AND truck_number != ''
             ORDER BY truck_number, dealer_name
@@ -2073,6 +2520,7 @@ def get_consolidated_vehicles():
                 }
             
             # Add invoice to this truck's list
+            plant_desc = row[14]
             trucks_today[truck_number]['invoices'].append({
                 'invoice_number': invoice_number,
                 'dealer_code': row[2],
@@ -2082,7 +2530,9 @@ def get_consolidated_vehicles():
                 'opc_quantity': opc_qty,
                 'total_quantity': total_qty,
                 'total_value': row[11] or 0,
-                'plant_depot': row[12]
+                'plant_depot': row[12],
+                'plant_description': plant_desc,
+                'depot_abbr': get_depot_abbreviation(plant_desc) if row[12] == 'DEPOT' else None
             })
             
             # Accumulate totals
