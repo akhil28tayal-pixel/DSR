@@ -498,12 +498,40 @@ def calculate_month_closing_balances(month_year):
         
         collections_data = {f"{row[0]}_{row[1]}": row[2] for row in cursor.fetchall()}
         
-        # Calculate closing balances
+        # Get credit notes for the month (reduces balance)
+        credits_data = {}
+        try:
+            cursor.execute('''
+                SELECT dealer_code, dealer_name, SUM(credit_discount) as total_credit
+                FROM credit_discounts 
+                WHERE month_year = ?
+                GROUP BY dealer_code, dealer_name
+            ''', (month_year,))
+            credits_data = {f"{row[0]}_{row[1]}": row[2] for row in cursor.fetchall()}
+        except:
+            pass
+        
+        # Get debit notes for the month (increases balance)
+        debits_data = {}
+        try:
+            cursor.execute('''
+                SELECT dealer_code, dealer_name, SUM(debit_amount) as total_debit
+                FROM debit_notes 
+                WHERE month_year = ?
+                GROUP BY dealer_code, dealer_name
+            ''', (month_year,))
+            debits_data = {f"{row[0]}_{row[1]}": row[2] for row in cursor.fetchall()}
+        except:
+            pass
+        
+        # Calculate closing balances = opening + sales - collections - credits + debits
         closing_balances = {}
         for dealer_key, opening_balance in opening_balances_map.items():
             sales = sales_data.get(dealer_key, 0)
             collections = collections_data.get(dealer_key, 0)
-            closing = opening_balance + sales - collections
+            credits = credits_data.get(dealer_key, 0)
+            debits = debits_data.get(dealer_key, 0)
+            closing = opening_balance + sales - collections - credits + debits
             closing_balances[dealer_key] = round(closing, 2)
         
         db.close()
@@ -599,13 +627,45 @@ def get_opening_balances_with_auto_calculation(month_year):
                 key = f"{row[0]}_{row[1]}"
                 prev_collections[key] = row[2] or 0
             
-            # Calculate previous month closing = opening + sales - collections
+            # Get previous month's credit notes (reduces balance)
+            prev_credits = {}
+            try:
+                cursor.execute('''
+                    SELECT dealer_code, dealer_name, SUM(credit_discount) as total_credit
+                    FROM credit_discounts 
+                    WHERE month_year = ?
+                    GROUP BY dealer_code, dealer_name
+                ''', (prev_month_year,))
+                for row in cursor.fetchall():
+                    key = f"{row[0]}_{row[1]}"
+                    prev_credits[key] = row[2] or 0
+            except:
+                pass
+            
+            # Get previous month's debit notes (increases balance)
+            prev_debits = {}
+            try:
+                cursor.execute('''
+                    SELECT dealer_code, dealer_name, SUM(debit_amount) as total_debit
+                    FROM debit_notes 
+                    WHERE month_year = ?
+                    GROUP BY dealer_code, dealer_name
+                ''', (prev_month_year,))
+                for row in cursor.fetchall():
+                    key = f"{row[0]}_{row[1]}"
+                    prev_debits[key] = row[2] or 0
+            except:
+                pass
+            
+            # Calculate previous month closing = opening + sales - collections - credits + debits
             for dealer_code, dealer_name in all_dealers:
                 key = f"{dealer_code}_{dealer_name}"
                 opening = prev_opening.get(key, 0)
                 sales = prev_sales.get(key, 0)
                 collections = prev_collections.get(key, 0)
-                closing = opening + sales - collections
+                credits = prev_credits.get(key, 0)
+                debits = prev_debits.get(key, 0)
+                closing = opening + sales - collections - credits + debits
                 result_balances[key] = round(closing, 2)
         else:
             # Use manual balances and calculate for missing dealers
