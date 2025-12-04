@@ -2187,11 +2187,11 @@ def get_dealer_balance():
                                SUM(premium_unloaded) as unloaded_premium,
                                SUM(opc_unloaded) as unloaded_opc
                         FROM vehicle_unloading
-                        WHERE unloading_date <= ?
+                        WHERE unloading_date >= ? AND unloading_date <= ?
                         GROUP BY truck_number
                     ) u ON p.vehicle_number = u.truck_number
                     WHERE p.month_year = ?
-                ''', (selected_date, month_year))
+                ''', (month_start, selected_date, month_year))
                 
                 # Get dealer names for manual vehicles
                 for row in cursor.fetchall():
