@@ -2960,21 +2960,41 @@ def get_consolidated_vehicles():
                 truck_data['unloading_details'] = []
             else:
                 # Filter unloading details to only show the portion that applies to today's billing
-                # Use FIFO: only show up to unloaded_for_today_* amounts
+                # Use FIFO: skip unloading consumed by opening balance and previous billings
                 filtered_unloading = []
+                
+                # Use all_unloading_map (all unloading in month) instead of unloading_map (today only)
+                # This ensures we show unloading that happened before billing date but applies to today's billing
+                all_unloading_for_truck = all_unloading_map.get(truck_number, [])
+                
+                # First, skip unloading consumed by opening balance and previous billings (FIFO)
+                skip_ppc = unloaded_for_opening_ppc + unloaded_for_prev_ppc
+                skip_premium = unloaded_for_opening_premium + unloaded_for_prev_premium
+                skip_opc = unloaded_for_opening_opc + unloaded_for_prev_opc
+                
                 remaining_to_show_ppc = unloaded_for_today_ppc
                 remaining_to_show_premium = unloaded_for_today_premium
                 remaining_to_show_opc = unloaded_for_today_opc
                 
-                for u in truck_data.get('unloading_details', []):
+                for u in all_unloading_for_truck:
                     record_ppc = u.get('ppc_unloaded', 0)
                     record_premium = u.get('premium_unloaded', 0)
                     record_opc = u.get('opc_unloaded', 0)
                     
+                    # First skip the portion consumed by opening/previous billings
+                    available_ppc = max(0, record_ppc - skip_ppc)
+                    available_premium = max(0, record_premium - skip_premium)
+                    available_opc = max(0, record_opc - skip_opc)
+                    
+                    # Update skip amounts (reduce by what was consumed from this record)
+                    skip_ppc = max(0, skip_ppc - record_ppc)
+                    skip_premium = max(0, skip_premium - record_premium)
+                    skip_opc = max(0, skip_opc - record_opc)
+                    
                     # Only take up to what's remaining for today's billing
-                    show_ppc = min(record_ppc, remaining_to_show_ppc) if truck_data['total_ppc'] > 0 else 0
-                    show_premium = min(record_premium, remaining_to_show_premium) if truck_data['total_premium'] > 0 else 0
-                    show_opc = min(record_opc, remaining_to_show_opc) if truck_data['total_opc'] > 0 else 0
+                    show_ppc = min(available_ppc, remaining_to_show_ppc) if truck_data['total_ppc'] > 0 else 0
+                    show_premium = min(available_premium, remaining_to_show_premium) if truck_data['total_premium'] > 0 else 0
+                    show_opc = min(available_opc, remaining_to_show_opc) if truck_data['total_opc'] > 0 else 0
                     
                     # Update remaining
                     remaining_to_show_ppc -= show_ppc
