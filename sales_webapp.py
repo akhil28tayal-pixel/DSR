@@ -2872,19 +2872,15 @@ def get_consolidated_vehicles():
             
             # Check if this truck has an opening balance (previous month carryover)
             # Opening balance unloading should NOT count against today's billing
+            # Use opening_balance_map which includes both pending_vehicle_unloading entries
+            # AND calculated opening from previous month's closing
             opening_balance_ppc = 0
             opening_balance_premium = 0
             opening_balance_opc = 0
-            cursor.execute('''
-                SELECT ppc_qty, premium_qty, opc_qty 
-                FROM pending_vehicle_unloading 
-                WHERE vehicle_number = ?
-            ''', (truck_number,))
-            opening_row = cursor.fetchone()
-            if opening_row:
-                opening_balance_ppc = opening_row[0] or 0
-                opening_balance_premium = opening_row[1] or 0
-                opening_balance_opc = opening_row[2] or 0
+            if truck_number in opening_balance_map:
+                opening_balance_ppc = opening_balance_map[truck_number].get('ppc', 0)
+                opening_balance_premium = opening_balance_map[truck_number].get('premium', 0)
+                opening_balance_opc = opening_balance_map[truck_number].get('opc', 0)
             
             # Get total unloaded for this truck (all dates up to today)
             total_unloaded_ppc = 0
