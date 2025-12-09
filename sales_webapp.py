@@ -3309,19 +3309,26 @@ def get_consolidated_vehicles():
                 if truck_source_key in added_prev_trucks:
                     continue
                 
-                # Skip if there's a billing on the selected date for this truck+plant_depot
-                # (unloading on selected date should apply to that day's billing, not previous)
+                # Check if there's a billing on the selected date for this truck+plant_depot
                 today_billing_key = f"{truck_number}_{selected_date}_{plant_depot}"
-                if today_billing_key in added_truck_date_sources:
-                    continue
+                has_today_billing = today_billing_key in added_truck_date_sources
                 
-                # Get unloading for this billing (from billing_date to selected_date)
-                # This ensures we only count unloading that applies to THIS billing
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, billing_date, selected_date))
+                # Get unloading for this billing
+                # If there's a billing on selected_date, only count unloading BEFORE selected_date
+                # (unloading on selected_date applies to the new billing)
+                # Otherwise, count unloading up to and including selected_date
+                if has_today_billing:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                    ''', (truck_number, billing_date, selected_date))
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                    ''', (truck_number, billing_date, selected_date))
                 all_truck_unloading = cursor.fetchone()
                 
                 # Check if this truck has multiple cards (PLANT + DEPOT) on the same billing date
@@ -3335,12 +3342,20 @@ def get_consolidated_vehicles():
                 if plant_depot_count > 1 and dealer_codes:
                     # Multiple plant_depot on same day - filter by dealer_code
                     placeholders = ','.join(['?' for _ in dealer_codes])
-                    cursor.execute(f'''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                          AND dealer_code IN ({placeholders})
-                    ''', (truck_number, month_start, selected_date, *dealer_codes))
+                    if has_today_billing:
+                        cursor.execute(f'''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                              AND dealer_code IN ({placeholders})
+                        ''', (truck_number, billing_date, selected_date, *dealer_codes))
+                    else:
+                        cursor.execute(f'''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                              AND dealer_code IN ({placeholders})
+                        ''', (truck_number, billing_date, selected_date, *dealer_codes))
                     card_unloading = cursor.fetchone()
                     this_card_unloaded_ppc = card_unloading[0] or 0
                     this_card_unloaded_premium = card_unloading[1] or 0
@@ -3382,6 +3397,18 @@ def get_consolidated_vehicles():
                     unloaded_before_opc >= billed_opc - 0.01
                 )
                 if was_fully_unloaded_before:
+                    continue
+                
+                # If there's a billing on selected date AND this previous billing is fully unloaded
+                # (including today's unloading), skip it to avoid duplicate cards
+                # But if there's still pending material, show it
+                pending_before_today_ppc = billed_ppc - unloaded_before_ppc
+                pending_before_today_premium = billed_premium - unloaded_before_premium
+                pending_before_today_opc = billed_opc - unloaded_before_opc
+                has_pending_before_today = (pending_before_today_ppc > 0.01 or pending_before_today_premium > 0.01 or pending_before_today_opc > 0.01)
+                
+                # Skip if there's a today billing AND this previous billing has no pending material
+                if has_today_billing and not has_pending_before_today:
                     continue
                 
                 # Check if THIS BILLING received any unloading on the selected date
