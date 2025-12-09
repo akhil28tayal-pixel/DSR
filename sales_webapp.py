@@ -2832,14 +2832,16 @@ def get_consolidated_vehicles():
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']
             dealer_codes = truck_data['dealer_codes']
+            # Convert dealer_codes to strings for comparison
+            dealer_codes_str = set(str(dc) for dc in dealer_codes)
             all_unloading = unloading_map.get(truck_number, [])
             
             # Filter unloading to only include entries for dealers in this card
             filtered_unloading = []
             for u in all_unloading:
-                u_dealer_code = u.get('dealer_code', '')
+                u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
                 # Include unloading if dealer_code matches OR if no dealer_code (legacy data)
-                if u_dealer_code in dealer_codes or not u_dealer_code:
+                if u_dealer_code in dealer_codes_str or not u_dealer_code:
                     filtered_unloading.append(u)
             
             truck_data['unloading_details'] = filtered_unloading
@@ -2862,41 +2864,24 @@ def get_consolidated_vehicles():
         # Now check for previous day billings that weren't fully unloaded
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']  # Get actual truck number from data
+            card_dealer_codes = set(str(dc) for dc in truck_data.get('dealer_codes', []))
             has_pending_previous = False
             previous_pending_qty = 0
             previous_pending_ppc = 0
             previous_pending_premium = 0
             previous_pending_opc = 0
             
-            if truck_number in previous_billings:
-                total_prev_billed_ppc = sum(p['ppc'] for p in previous_billings[truck_number])
-                total_prev_billed_premium = sum(p['premium'] for p in previous_billings[truck_number])
-                total_prev_billed_opc = sum(p['opc'] for p in previous_billings[truck_number])
-                
-                total_prev_unloaded_ppc = 0
-                total_prev_unloaded_premium = 0
-                total_prev_unloaded_opc = 0
-                if truck_number in all_unloading_map:
-                    for u in all_unloading_map[truck_number]:
-                        if u['unloading_date'] < selected_date:
-                            total_prev_unloaded_ppc += u['ppc_unloaded']
-                            total_prev_unloaded_premium += u['premium_unloaded']
-                            total_prev_unloaded_opc += u['opc_unloaded']
-                
-                previous_pending_ppc = max(0, total_prev_billed_ppc - total_prev_unloaded_ppc)
-                previous_pending_premium = max(0, total_prev_billed_premium - total_prev_unloaded_premium)
-                previous_pending_opc = max(0, total_prev_billed_opc - total_prev_unloaded_opc)
-                previous_pending_qty = previous_pending_ppc + previous_pending_premium + previous_pending_opc
-                
-                if previous_pending_qty > 0.01:
-                    has_pending_previous = True
+            # Previous pending should only be calculated for the SAME dealers in this card
+            # Don't mix PLANT and DEPOT previous pending
+            # For now, we skip previous pending calculation for separated cards
+            # Previous day pending is shown as separate cards in the list
             
             truck_data['has_pending_previous'] = has_pending_previous
             truck_data['previous_pending_qty'] = round(previous_pending_qty, 2)
             truck_data['previous_pending_ppc'] = round(previous_pending_ppc, 2)
             truck_data['previous_pending_premium'] = round(previous_pending_premium, 2)
             truck_data['previous_pending_opc'] = round(previous_pending_opc, 2)
-            truck_data['previous_billings'] = previous_billings.get(truck_number, [])
+            truck_data['previous_billings'] = []  # Previous billings shown as separate cards
             truck_data['is_rebilled'] = has_pending_previous
             truck_data['is_opening_vehicle'] = False
             
@@ -2923,11 +2908,13 @@ def get_consolidated_vehicles():
             total_unloaded_premium = 0
             total_unloaded_opc = 0
             dealer_codes = set(truck_data.get('dealer_codes', []))
+            # Convert to strings for comparison (dealer_code in unloading is string, in sales_data is int)
+            dealer_codes_str = set(str(dc) for dc in dealer_codes)
             if truck_number in all_unloading_map:
                 for u in all_unloading_map[truck_number]:
-                    u_dealer_code = u.get('dealer_code', '')
+                    u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
                     # Only count unloading for dealers in this card
-                    if u_dealer_code in dealer_codes or not u_dealer_code:
+                    if u_dealer_code in dealer_codes_str or not u_dealer_code:
                         total_unloaded_ppc += u['ppc_unloaded']
                         total_unloaded_premium += u['premium_unloaded']
                         total_unloaded_opc += u['opc_unloaded']
@@ -2938,36 +2925,17 @@ def get_consolidated_vehicles():
             unloaded_for_opening_premium = min(opening_balance_premium, total_unloaded_premium)
             unloaded_for_opening_opc = min(opening_balance_opc, total_unloaded_opc)
             
-            # Get total previous billings (not just pending - ALL previous billings in the month)
-            # EXCLUDE opening balance since it's already handled separately above
-            total_prev_billed_ppc = 0
-            total_prev_billed_premium = 0
-            total_prev_billed_opc = 0
-            if truck_number in previous_billings:
-                for p in previous_billings[truck_number]:
-                    # Skip opening balance entries - they're already counted in opening_balance_*
-                    if p.get('dealers') == 'Opening Balance':
-                        continue
-                    total_prev_billed_ppc += p['ppc']
-                    total_prev_billed_premium += p['premium']
-                    total_prev_billed_opc += p['opc']
+            # Since we're now separating by dealer_code/plant_depot, each card calculates its own remaining
+            # based on its own billing and unloading (filtered by dealer_code)
+            # Previous billings for the same dealer are shown as separate cards
             
-            # Unloading consumed by previous billings (after opening)
-            remaining_after_opening_ppc = total_unloaded_ppc - unloaded_for_opening_ppc
-            remaining_after_opening_premium = total_unloaded_premium - unloaded_for_opening_premium
-            remaining_after_opening_opc = total_unloaded_opc - unloaded_for_opening_opc
+            # For today's billing card, calculate remaining = billed - unloaded (for this card's dealers)
+            # Don't subtract previous billings - they're shown as separate cards
+            unloaded_for_today_ppc = min(truck_data['total_ppc'], total_unloaded_ppc)
+            unloaded_for_today_premium = min(truck_data['total_premium'], total_unloaded_premium)
+            unloaded_for_today_opc = min(truck_data['total_opc'], total_unloaded_opc)
             
-            unloaded_for_prev_ppc = min(total_prev_billed_ppc, remaining_after_opening_ppc)
-            unloaded_for_prev_premium = min(total_prev_billed_premium, remaining_after_opening_premium)
-            unloaded_for_prev_opc = min(total_prev_billed_opc, remaining_after_opening_opc)
-            
-            # Unloading available for today's billing (after opening AND previous billings consumed)
-            unloaded_for_today_ppc = remaining_after_opening_ppc - unloaded_for_prev_ppc
-            unloaded_for_today_premium = remaining_after_opening_premium - unloaded_for_prev_premium
-            unloaded_for_today_opc = remaining_after_opening_opc - unloaded_for_prev_opc
-            
-            # Calculate remaining pending (today's billing only - previous pending already accounted for separately)
-            # Today's billing remaining = today's billed - unloading for today
+            # Calculate remaining pending for today's billing
             remaining_ppc = max(0, truck_data['total_ppc'] - unloaded_for_today_ppc)
             remaining_premium = max(0, truck_data['total_premium'] - unloaded_for_today_premium)
             remaining_opc = max(0, truck_data['total_opc'] - unloaded_for_today_opc)
@@ -3198,27 +3166,31 @@ def get_consolidated_vehicles():
             
             # Get vehicles billed on previous days (not today) that might be pending
             # Include both sales_data and other_dealers_billing
+            # SEPARATE by plant_depot to show PLANT and DEPOT as different cards
             cursor.execute('''
-                SELECT truck_number, billing_date,
+                SELECT truck_number, billing_date, plant_depot,
                        GROUP_CONCAT(DISTINCT dealers) as dealers,
+                       GROUP_CONCAT(DISTINCT dealer_code) as dealer_codes,
                        SUM(ppc) as ppc,
                        SUM(premium) as premium,
                        SUM(opc) as opc
                 FROM (
-                    SELECT truck_number, sale_date as billing_date, dealer_name as dealers,
+                    SELECT truck_number, sale_date as billing_date, plant_depot,
+                           dealer_name as dealers, dealer_code,
                            ppc_quantity as ppc, premium_quantity as premium, opc_quantity as opc
                     FROM sales_data
                     WHERE sale_date >= ? AND sale_date < ?
                       AND truck_number IS NOT NULL AND truck_number != ''
                     UNION ALL
-                    SELECT truck_number, sale_date as billing_date, dealer_name as dealers,
+                    SELECT truck_number, sale_date as billing_date, 'DEPOT' as plant_depot,
+                           dealer_name as dealers, '' as dealer_code,
                            ppc_quantity as ppc, premium_quantity as premium, opc_quantity as opc
                     FROM other_dealers_billing
                     WHERE sale_date >= ? AND sale_date < ?
                       AND truck_number IS NOT NULL AND truck_number != ''
                 )
-                GROUP BY truck_number, billing_date
-                ORDER BY billing_date, truck_number
+                GROUP BY truck_number, billing_date, plant_depot
+                ORDER BY billing_date, truck_number, plant_depot
             ''', (month_start, selected_date, month_start, selected_date))
             
             prev_day_billings = cursor.fetchall()
@@ -3236,9 +3208,9 @@ def get_consolidated_vehicles():
                 truck = row[0]
                 if truck not in truck_total_billed:
                     truck_total_billed[truck] = {'ppc': 0, 'premium': 0, 'opc': 0}
-                truck_total_billed[truck]['ppc'] += row[3] or 0
-                truck_total_billed[truck]['premium'] += row[4] or 0
-                truck_total_billed[truck]['opc'] += row[5] or 0
+                truck_total_billed[truck]['ppc'] += row[5] or 0
+                truck_total_billed[truck]['premium'] += row[6] or 0
+                truck_total_billed[truck]['opc'] += row[7] or 0
             
             # Get unloading for all trucks (current month only)
             cursor.execute('''
@@ -3259,66 +3231,65 @@ def get_consolidated_vehicles():
                     'opc': row[3] or 0
                 }
             
-            # Find trucks with pending material - show each billing date separately
-            # Track which truck+date combinations we've added
-            added_truck_dates = set()
+            # Find trucks with pending material - show each billing date + plant_depot separately
+            # Track which truck+date+plant_depot combinations we've added
+            added_truck_date_sources = set()
             for v in vehicles_list:
                 display_truck = v.get('display_truck_number', v.get('truck_number', ''))
                 if display_truck.endswith('_OPENING'):
                     display_truck = display_truck[:-8]
                 if display_truck.endswith('_PREV'):
                     display_truck = display_truck[:-5]
-                added_truck_dates.add(f"{display_truck}_{v.get('billing_date', '')}")
-            
-            # Track cumulative unloading consumed per truck (FIFO)
-            truck_unloading_consumed = {}
-            
-            # First, consume unloading for opening balance vehicles
-            for truck, ob in opening_balance_map.items():
-                unloaded = truck_unloaded.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
-                consumed_ppc = min(ob['ppc'], unloaded['ppc'])
-                consumed_premium = min(ob['premium'], unloaded['premium'])
-                consumed_opc = min(ob['opc'], unloaded['opc'])
-                truck_unloading_consumed[truck] = {
-                    'ppc': consumed_ppc,
-                    'premium': consumed_premium,
-                    'opc': consumed_opc
-                }
+                plant_depot = v.get('plant_depot', 'PLANT')
+                added_truck_date_sources.add(f"{display_truck}_{v.get('billing_date', '')}_{plant_depot}")
             
             for row in prev_day_billings:
                 truck_number = row[0]
                 billing_date = row[1]
-                dealers = row[2]
-                billed_ppc = row[3] or 0
-                billed_premium = row[4] or 0
-                billed_opc = row[5] or 0
+                plant_depot = row[2] or 'PLANT'
+                dealers = row[3]
+                dealer_codes_str = row[4] or ''
+                dealer_codes = set(dealer_codes_str.split(',')) if dealer_codes_str else set()
+                billed_ppc = row[5] or 0
+                billed_premium = row[6] or 0
+                billed_opc = row[7] or 0
                 
-                # Skip if this specific truck+date is already in list
-                truck_date_key = f"{truck_number}_{billing_date}"
-                if truck_date_key in added_truck_dates:
+                # Skip if this specific truck+date+plant_depot is already in list
+                truck_date_source_key = f"{truck_number}_{billing_date}_{plant_depot}"
+                if truck_date_source_key in added_truck_date_sources:
                     continue
                 
-                # Initialize consumed tracking if needed
-                if truck_number not in truck_unloading_consumed:
-                    truck_unloading_consumed[truck_number] = {'ppc': 0, 'premium': 0, 'opc': 0}
+                # Get unloading for this card filtered by dealer_codes
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                all_truck_unloading = cursor.fetchone()
                 
-                # Get total unloading for this truck
-                total_unloaded = truck_unloaded.get(truck_number, {'ppc': 0, 'premium': 0, 'opc': 0})
-                
-                # Calculate remaining unloading available (FIFO - after previous billings consumed)
-                remaining_unloaded_ppc = max(0, total_unloaded['ppc'] - truck_unloading_consumed[truck_number]['ppc'])
-                remaining_unloaded_premium = max(0, total_unloaded['premium'] - truck_unloading_consumed[truck_number]['premium'])
-                remaining_unloaded_opc = max(0, total_unloaded['opc'] - truck_unloading_consumed[truck_number]['opc'])
+                # Filter unloading by dealer_codes for this specific card
+                if dealer_codes:
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                          AND dealer_code IN ({placeholders})
+                    ''', (truck_number, month_start, selected_date, *dealer_codes))
+                    card_unloading = cursor.fetchone()
+                    this_card_unloaded_ppc = card_unloading[0] or 0
+                    this_card_unloaded_premium = card_unloading[1] or 0
+                    this_card_unloaded_opc = card_unloading[2] or 0
+                else:
+                    # No dealer codes - use all unloading for this truck
+                    this_card_unloaded_ppc = all_truck_unloading[0] or 0
+                    this_card_unloaded_premium = all_truck_unloading[1] or 0
+                    this_card_unloaded_opc = all_truck_unloading[2] or 0
                 
                 # Calculate how much of THIS billing is unloaded vs pending
-                this_unloaded_ppc = min(billed_ppc, remaining_unloaded_ppc)
-                this_unloaded_premium = min(billed_premium, remaining_unloaded_premium)
-                this_unloaded_opc = min(billed_opc, remaining_unloaded_opc)
-                
-                # Update consumed
-                truck_unloading_consumed[truck_number]['ppc'] += this_unloaded_ppc
-                truck_unloading_consumed[truck_number]['premium'] += this_unloaded_premium
-                truck_unloading_consumed[truck_number]['opc'] += this_unloaded_opc
+                this_unloaded_ppc = min(billed_ppc, this_card_unloaded_ppc)
+                this_unloaded_premium = min(billed_premium, this_card_unloaded_premium)
+                this_unloaded_opc = min(billed_opc, this_card_unloaded_opc)
                 
                 # Calculate pending for this specific billing
                 pending_ppc = billed_ppc - this_unloaded_ppc
@@ -3327,95 +3298,82 @@ def get_consolidated_vehicles():
                 pending_total = pending_ppc + pending_premium + pending_opc
                 this_total_unloaded = this_unloaded_ppc + this_unloaded_premium + this_unloaded_opc
                 
-                # Check if THIS BILLING received any unloading on the selected date via FIFO
-                # We need to calculate how much of today's unloading was attributed to this billing
+                # Check if THIS BILLING received any unloading on the selected date
+                # Filter by dealer_codes for this specific card
                 unloaded_on_selected_date = False
+                unloaded_today_ppc = 0
+                unloaded_today_premium = 0
+                unloaded_today_opc = 0
                 
-                # Get unloading BEFORE selected date for this truck (current month only)
-                cursor.execute('''
-                    SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
-                    FROM vehicle_unloading 
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
-                ''', (truck_number, month_start, selected_date))
-                before_today = cursor.fetchone()
-                before_ppc = (before_today[0] or 0) if before_today else 0
-                before_premium = (before_today[1] or 0) if before_today else 0
-                before_opc = (before_today[2] or 0) if before_today else 0
-                
-                # Calculate how much unloading before today was consumed by opening + previous billings
-                # This tells us how much of today's unloading applies to this billing
-                consumed_before_ppc = truck_unloading_consumed[truck_number]['ppc'] - this_unloaded_ppc
-                consumed_before_premium = truck_unloading_consumed[truck_number]['premium'] - this_unloaded_premium
-                consumed_before_opc = truck_unloading_consumed[truck_number]['opc'] - this_unloaded_opc
-                
-                # Unloading before today that was available for this billing
-                available_before_ppc = max(0, before_ppc - consumed_before_ppc)
-                available_before_premium = max(0, before_premium - consumed_before_premium)
-                available_before_opc = max(0, before_opc - consumed_before_opc)
-                
-                # How much of this billing was unloaded before today
-                unloaded_before_ppc = min(billed_ppc, available_before_ppc)
-                unloaded_before_premium = min(billed_premium, available_before_premium)
-                unloaded_before_opc = min(billed_opc, available_before_opc)
-                
-                # How much of this billing was unloaded TODAY
-                unloaded_today_ppc = this_unloaded_ppc - unloaded_before_ppc
-                unloaded_today_premium = this_unloaded_premium - unloaded_before_premium
-                unloaded_today_opc = this_unloaded_opc - unloaded_before_opc
+                if dealer_codes:
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading 
+                        WHERE truck_number = ? AND unloading_date = ? AND dealer_code IN ({placeholders})
+                    ''', (truck_number, selected_date, *dealer_codes))
+                    today_unloading = cursor.fetchone()
+                    unloaded_today_ppc = today_unloading[0] or 0
+                    unloaded_today_premium = today_unloading[1] or 0
+                    unloaded_today_opc = today_unloading[2] or 0
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading 
+                        WHERE truck_number = ? AND unloading_date = ?
+                    ''', (truck_number, selected_date))
+                    today_unloading = cursor.fetchone()
+                    unloaded_today_ppc = today_unloading[0] or 0
+                    unloaded_today_premium = today_unloading[1] or 0
+                    unloaded_today_opc = today_unloading[2] or 0
                 
                 if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                     unloaded_on_selected_date = True
                 
-                # Show previous day vehicles if:
-                # 1. They have pending material, OR
-                # 2. They received unloading on the selected date (via FIFO)
-                if pending_total > 0.01 or unloaded_on_selected_date:
+                # Show previous day vehicles if they have pending material
+                # Don't show if fully unloaded - even if there's unloading today for this dealer,
+                # that unloading is for a different billing (today's billing), not this previous day billing
+                if pending_total > 0.01:
                     # For previous day pending vehicles, only show unloading that applies to THIS billing
                     prev_unloading = []
                     
                     # Only include unloading details if some unloading TODAY applies to this billing
-                    # Use unloaded_today_* which is the FIFO-calculated amount for this billing
-                    if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
-                        cursor.execute('''
-                            SELECT id, truck_number, unloading_dealer, unloading_point, 
-                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                                   notes, dealer_code, is_other_dealer, unloading_date
-                            FROM vehicle_unloading 
-                            WHERE truck_number = ? AND unloading_date = ?
-                        ''', (truck_number, selected_date))
-                        
-                        # Track remaining unloading to attribute to this billing
-                        remaining_to_show_ppc = unloaded_today_ppc
-                        remaining_to_show_premium = unloaded_today_premium
-                        remaining_to_show_opc = unloaded_today_opc
+                    if unloaded_on_selected_date:
+                        # Get unloading records filtered by dealer_codes
+                        if dealer_codes:
+                            placeholders = ','.join(['?' for _ in dealer_codes])
+                            cursor.execute(f'''
+                                SELECT id, truck_number, unloading_dealer, unloading_point, 
+                                       ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                                       notes, dealer_code, is_other_dealer, unloading_date
+                                FROM vehicle_unloading 
+                                WHERE truck_number = ? AND unloading_date = ? AND dealer_code IN ({placeholders})
+                            ''', (truck_number, selected_date, *dealer_codes))
+                        else:
+                            cursor.execute('''
+                                SELECT id, truck_number, unloading_dealer, unloading_point, 
+                                       ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                                       notes, dealer_code, is_other_dealer, unloading_date
+                                FROM vehicle_unloading 
+                                WHERE truck_number = ? AND unloading_date = ?
+                            ''', (truck_number, selected_date))
                         
                         for urow in cursor.fetchall():
-                            # Calculate how much of this unloading record applies to this billing
                             record_ppc = urow[4] or 0
                             record_premium = urow[5] or 0
                             record_opc = urow[6] or 0
                             
-                            # Only take up to what's remaining for this billing
-                            show_ppc = min(record_ppc, remaining_to_show_ppc) if billed_ppc > 0 else 0
-                            show_premium = min(record_premium, remaining_to_show_premium) if billed_premium > 0 else 0
-                            show_opc = min(record_opc, remaining_to_show_opc) if billed_opc > 0 else 0
-                            
-                            # Update remaining
-                            remaining_to_show_ppc -= show_ppc
-                            remaining_to_show_premium -= show_premium
-                            remaining_to_show_opc -= show_opc
-                            
                             # Only include if there's something to show
-                            if show_ppc > 0.01 or show_premium > 0.01 or show_opc > 0.01:
+                            if record_ppc > 0.01 or record_premium > 0.01 or record_opc > 0.01:
                                 prev_unloading.append({
                                     'id': urow[0],
                                     'truck_number': urow[1],
                                     'unloading_dealer': urow[2],
                                     'unloading_point': urow[3],
-                                    'ppc_unloaded': round(show_ppc, 2),
-                                    'premium_unloaded': round(show_premium, 2),
-                                    'opc_unloaded': round(show_opc, 2),
-                                    'unloaded_quantity': round(show_ppc + show_premium + show_opc, 2),
+                                    'ppc_unloaded': round(record_ppc, 2),
+                                    'premium_unloaded': round(record_premium, 2),
+                                    'opc_unloaded': round(record_opc, 2),
+                                    'unloaded_quantity': round(record_ppc + record_premium + record_opc, 2),
                                     'notes': urow[8],
                                     'dealer_code': urow[9],
                                     'is_other_dealer': bool(urow[10]) if urow[10] is not None else False,
@@ -3423,10 +3381,13 @@ def get_consolidated_vehicles():
                                 })
                     
                     # Add to list as a previous day pending vehicle
+                    # Use unique key with plant_depot to separate PLANT and DEPOT
                     vehicles_list.append({
-                        'truck_number': truck_number + '_PREV',
+                        'truck_number': f"{truck_number}_PREV_{plant_depot}",
                         'display_truck_number': truck_number,
                         'billing_date': billing_date,
+                        'plant_depot': plant_depot,
+                        'dealer_codes': list(dealer_codes),
                         'invoices': [{
                             'invoice_number': 'PREVIOUS',
                             'dealer_code': '',
@@ -3436,7 +3397,7 @@ def get_consolidated_vehicles():
                             'opc_quantity': billed_opc,
                             'total_quantity': billed_ppc + billed_premium + billed_opc,
                             'total_value': 0,
-                            'plant_depot': f'Billed {billing_date}'
+                            'plant_depot': plant_depot
                         }],
                         'total_ppc': billed_ppc,
                         'total_premium': billed_premium,
