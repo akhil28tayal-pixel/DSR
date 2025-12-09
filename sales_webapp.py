@@ -3292,12 +3292,13 @@ def get_consolidated_vehicles():
                 if truck_source_key in added_prev_trucks:
                     continue
                 
-                # Get unloading for this card filtered by dealer_codes
+                # Get unloading for this billing (from billing_date to selected_date)
+                # This ensures we only count unloading that applies to THIS billing
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                     FROM vehicle_unloading
                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, month_start, selected_date))
+                ''', (truck_number, billing_date, selected_date))
                 all_truck_unloading = cursor.fetchone()
                 
                 # Check if this truck has multiple cards (PLANT + DEPOT) on the same billing date
@@ -3360,15 +3361,14 @@ def get_consolidated_vehicles():
                 if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                     unloaded_on_selected_date = True
                 
-                # Show previous day vehicles if:
-                # 1. They have pending material (not fully unloaded), OR
-                # 2. They have unloading on the selected date (even if fully unloaded)
-                if pending_total > 0.01 or unloaded_on_selected_date:
-                    # For previous day pending vehicles, show ALL unloading for this truck
-                    # from month_start to selected_date (not filtered by dealer_code)
+                # Show previous day vehicles ONLY if they have pending material
+                # (Vehicles fully unloaded are not shown - unloading on selected date might be for a different billing)
+                if pending_total > 0.01:
+                    # For previous day pending vehicles, show unloading from billing_date to selected_date
+                    # This ensures we only show unloading that applies to THIS billing, not earlier billings
                     prev_unloading = []
                     
-                    # Get ALL unloading records for this truck (from month_start to selected_date)
+                    # Get unloading records for this truck from billing_date to selected_date
                     cursor.execute('''
                         SELECT id, truck_number, unloading_dealer, unloading_point, 
                                ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
@@ -3376,24 +3376,38 @@ def get_consolidated_vehicles():
                         FROM vehicle_unloading 
                         WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                         ORDER BY unloading_date
-                    ''', (truck_number, month_start, selected_date))
+                    ''', (truck_number, billing_date, selected_date))
+                    
+                    # Cap unloading at billed amount (FIFO)
+                    remaining_to_show_ppc = billed_ppc
+                    remaining_to_show_premium = billed_premium
+                    remaining_to_show_opc = billed_opc
                     
                     for urow in cursor.fetchall():
                         record_ppc = urow[4] or 0
                         record_premium = urow[5] or 0
                         record_opc = urow[6] or 0
                         
+                        # Cap at remaining billed amount
+                        show_ppc = min(record_ppc, remaining_to_show_ppc)
+                        show_premium = min(record_premium, remaining_to_show_premium)
+                        show_opc = min(record_opc, remaining_to_show_opc)
+                        
+                        remaining_to_show_ppc -= show_ppc
+                        remaining_to_show_premium -= show_premium
+                        remaining_to_show_opc -= show_opc
+                        
                         # Only include if there's something to show
-                        if record_ppc > 0.01 or record_premium > 0.01 or record_opc > 0.01:
+                        if show_ppc > 0.01 or show_premium > 0.01 or show_opc > 0.01:
                             prev_unloading.append({
                                 'id': urow[0],
                                 'truck_number': urow[1],
                                 'unloading_dealer': urow[2],
                                 'unloading_point': urow[3],
-                                'ppc_unloaded': round(record_ppc, 2),
-                                'premium_unloaded': round(record_premium, 2),
-                                'opc_unloaded': round(record_opc, 2),
-                                'unloaded_quantity': round(record_ppc + record_premium + record_opc, 2),
+                                'ppc_unloaded': round(show_ppc, 2),
+                                'premium_unloaded': round(show_premium, 2),
+                                'opc_unloaded': round(show_opc, 2),
+                                'unloaded_quantity': round(show_ppc + show_premium + show_opc, 2),
                                 'notes': urow[8],
                                 'dealer_code': urow[9],
                                 'is_other_dealer': bool(urow[10]) if urow[10] is not None else False,
