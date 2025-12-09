@@ -3361,29 +3361,44 @@ def get_consolidated_vehicles():
                 if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                     unloaded_on_selected_date = True
                 
-                # Show previous day vehicles if:
-                # 1. They have pending material, OR
-                # 2. They have unloading on the selected date (for this billing's dealers)
-                # Check if there's unloading on selected date for THIS billing's dealers
+                # ONLY show previous day vehicles if they have unloading on the selected date
+                # that matches the product types billed (PPC unloading for PPC billing, etc.)
                 has_unloading_for_this_billing = False
                 if unloaded_on_selected_date:
-                    # Check if the unloading matches this billing's dealer_codes
-                    if plant_depot_count > 1 and dealer_codes:
-                        placeholders = ','.join(['?' for _ in dealer_codes])
-                        cursor.execute(f'''
-                            SELECT COUNT(*) FROM vehicle_unloading 
-                            WHERE truck_number = ? AND unloading_date = ? AND dealer_code IN ({placeholders})
-                        ''', (truck_number, selected_date, *dealer_codes))
+                    # Check if there's unloading on selected date that matches this billing's product types
+                    # Build conditions based on what was billed
+                    product_conditions = []
+                    if billed_ppc > 0:
+                        product_conditions.append("ppc_unloaded > 0")
+                    if billed_premium > 0:
+                        product_conditions.append("premium_unloaded > 0")
+                    if billed_opc > 0:
+                        product_conditions.append("opc_unloaded > 0")
+                    
+                    if product_conditions:
+                        product_filter = " OR ".join(product_conditions)
+                        if plant_depot_count > 1 and dealer_codes:
+                            placeholders = ','.join(['?' for _ in dealer_codes])
+                            cursor.execute(f'''
+                                SELECT COUNT(*) FROM vehicle_unloading 
+                                WHERE truck_number = ? AND unloading_date = ? 
+                                  AND dealer_code IN ({placeholders})
+                                  AND ({product_filter})
+                            ''', (truck_number, selected_date, *dealer_codes))
+                        else:
+                            cursor.execute(f'''
+                                SELECT COUNT(*) FROM vehicle_unloading 
+                                WHERE truck_number = ? AND unloading_date = ? 
+                                  AND ({product_filter})
+                            ''', (truck_number, selected_date))
                         has_unloading_for_this_billing = cursor.fetchone()[0] > 0
-                    else:
-                        has_unloading_for_this_billing = True
                 
-                if pending_total > 0.01 or has_unloading_for_this_billing:
-                    # For previous day pending vehicles, show unloading from billing_date to selected_date
-                    # This ensures we only show unloading that applies to THIS billing, not earlier billings
+                # Only show if there's unloading on selected date for this billing
+                if has_unloading_for_this_billing:
+                    # For previous day vehicles, ONLY show unloading on the selected date
                     prev_unloading = []
                     
-                    # Get unloading records for this truck from billing_date to selected_date
+                    # Get unloading records for this truck on selected_date only
                     # Filter by dealer_code if there are multiple plant_depot for this truck
                     if plant_depot_count > 1 and dealer_codes:
                         placeholders = ','.join(['?' for _ in dealer_codes])
@@ -3392,19 +3407,19 @@ def get_consolidated_vehicles():
                                    ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                                    notes, dealer_code, is_other_dealer, unloading_date
                             FROM vehicle_unloading 
-                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                            WHERE truck_number = ? AND unloading_date = ?
                               AND dealer_code IN ({placeholders})
                             ORDER BY unloading_date
-                        ''', (truck_number, billing_date, selected_date, *dealer_codes))
+                        ''', (truck_number, selected_date, *dealer_codes))
                     else:
                         cursor.execute('''
                             SELECT id, truck_number, unloading_dealer, unloading_point, 
                                    ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                                    notes, dealer_code, is_other_dealer, unloading_date
                             FROM vehicle_unloading 
-                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                            WHERE truck_number = ? AND unloading_date = ?
                             ORDER BY unloading_date
-                        ''', (truck_number, billing_date, selected_date))
+                        ''', (truck_number, selected_date))
                     
                     # Cap unloading at billed amount (FIFO)
                     remaining_to_show_ppc = billed_ppc
