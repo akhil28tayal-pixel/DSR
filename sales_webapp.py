@@ -3369,14 +3369,27 @@ def get_consolidated_vehicles():
                     prev_unloading = []
                     
                     # Get unloading records for this truck from billing_date to selected_date
-                    cursor.execute('''
-                        SELECT id, truck_number, unloading_dealer, unloading_point, 
-                               ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                               notes, dealer_code, is_other_dealer, unloading_date
-                        FROM vehicle_unloading 
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                        ORDER BY unloading_date
-                    ''', (truck_number, billing_date, selected_date))
+                    # Filter by dealer_code if there are multiple plant_depot for this truck
+                    if plant_depot_count > 1 and dealer_codes:
+                        placeholders = ','.join(['?' for _ in dealer_codes])
+                        cursor.execute(f'''
+                            SELECT id, truck_number, unloading_dealer, unloading_point, 
+                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                                   notes, dealer_code, is_other_dealer, unloading_date
+                            FROM vehicle_unloading 
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                              AND dealer_code IN ({placeholders})
+                            ORDER BY unloading_date
+                        ''', (truck_number, billing_date, selected_date, *dealer_codes))
+                    else:
+                        cursor.execute('''
+                            SELECT id, truck_number, unloading_dealer, unloading_point, 
+                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                                   notes, dealer_code, is_other_dealer, unloading_date
+                            FROM vehicle_unloading 
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                            ORDER BY unloading_date
+                        ''', (truck_number, billing_date, selected_date))
                     
                     # Cap unloading at billed amount (FIFO)
                     remaining_to_show_ppc = billed_ppc
