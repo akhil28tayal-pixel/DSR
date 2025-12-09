@@ -3340,6 +3340,27 @@ def get_consolidated_vehicles():
                 pending_total = pending_ppc + pending_premium + pending_opc
                 this_total_unloaded = this_unloaded_ppc + this_unloaded_premium + this_unloaded_opc
                 
+                # Check if this billing was already fully unloaded BEFORE the selected date
+                # If so, skip it - the unloading on selected date is for a different (later) billing
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                ''', (truck_number, billing_date, selected_date))
+                unloaded_before_today = cursor.fetchone()
+                unloaded_before_ppc = min(billed_ppc, unloaded_before_today[0] or 0)
+                unloaded_before_premium = min(billed_premium, unloaded_before_today[1] or 0)
+                unloaded_before_opc = min(billed_opc, unloaded_before_today[2] or 0)
+                
+                # If billing was fully unloaded before selected date, skip this card
+                was_fully_unloaded_before = (
+                    unloaded_before_ppc >= billed_ppc - 0.01 and
+                    unloaded_before_premium >= billed_premium - 0.01 and
+                    unloaded_before_opc >= billed_opc - 0.01
+                )
+                if was_fully_unloaded_before:
+                    continue
+                
                 # Check if THIS BILLING received any unloading on the selected date
                 # Filter by dealer_codes for this specific card
                 unloaded_on_selected_date = False
