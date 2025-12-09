@@ -3359,10 +3359,10 @@ def get_consolidated_vehicles():
                 if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                     unloaded_on_selected_date = True
                 
-                # Show previous day vehicles if they have pending material
-                # Don't show if fully unloaded - even if there's unloading today for this dealer,
-                # that unloading is for a different billing (today's billing), not this previous day billing
-                if pending_total > 0.01:
+                # Show previous day vehicles if:
+                # 1. They have pending material, OR
+                # 2. They have unloading on the selected date (even if fully unloaded)
+                if pending_total > 0.01 or unloaded_on_selected_date:
                     # For previous day pending vehicles, show ALL unloading for this truck
                     # from month_start to selected_date (not filtered by dealer_code)
                     prev_unloading = []
