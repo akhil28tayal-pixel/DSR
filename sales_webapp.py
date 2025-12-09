@@ -2306,16 +2306,19 @@ def get_dealer_balance():
 
 @app.route('/get_all_dealers', methods=['GET'])
 def get_all_dealers():
-    """Get all unique dealers from the database"""
+    """Get all unique dealers from the database - one entry per dealer_code"""
     try:
         db = SalesCollectionsDatabase(DB_PATH)
         cursor = db.conn.cursor()
         
+        # Group by dealer_code and pick the shortest dealer_name (without suffix like "(8632)")
         cursor.execute('''
-            SELECT DISTINCT dealer_code, dealer_name 
+            SELECT dealer_code, MIN(dealer_name) as dealer_name
             FROM sales_data 
-            WHERE dealer_name IS NOT NULL AND dealer_name != ''
-            ORDER BY dealer_name
+            WHERE dealer_code IS NOT NULL AND dealer_code != ''
+              AND dealer_name IS NOT NULL AND dealer_name != ''
+            GROUP BY dealer_code
+            ORDER BY MIN(dealer_name)
         ''')
         
         dealers = []
