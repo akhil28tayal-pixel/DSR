@@ -3264,7 +3264,14 @@ def get_consolidated_vehicles():
                 plant_depot = v.get('plant_depot', 'PLANT')
                 added_truck_date_sources.add(f"{display_truck}_{v.get('billing_date', '')}_{plant_depot}")
             
-            for row in prev_day_billings:
+            # Track which trucks we've already added for previous day unloading
+            # Only show ONE card per truck (the most recent billing)
+            added_prev_trucks = set()
+            
+            # Sort prev_day_billings by billing_date DESC to get most recent first
+            prev_day_billings_sorted = sorted(prev_day_billings, key=lambda x: x[1], reverse=True)
+            
+            for row in prev_day_billings_sorted:
                 truck_number = row[0]
                 billing_date = row[1]
                 plant_depot = row[2] or 'PLANT'
@@ -3275,9 +3282,13 @@ def get_consolidated_vehicles():
                 billed_premium = row[6] or 0
                 billed_opc = row[7] or 0
                 
-                # Skip if this specific truck+date+plant_depot is already in list
+                # Skip if this specific truck+date+plant_depot is already in list (from today's billing)
                 truck_date_source_key = f"{truck_number}_{billing_date}_{plant_depot}"
                 if truck_date_source_key in added_truck_date_sources:
+                    continue
+                
+                # Skip if we've already added a card for this truck (only show most recent billing)
+                if truck_number in added_prev_trucks:
                     continue
                 
                 # Get unloading for this card filtered by dealer_codes
@@ -3334,35 +3345,23 @@ def get_consolidated_vehicles():
                 unloaded_today_premium = 0
                 unloaded_today_opc = 0
                 
-                if dealer_codes:
-                    placeholders = ','.join(['?' for _ in dealer_codes])
-                    cursor.execute(f'''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading 
-                        WHERE truck_number = ? AND unloading_date = ? AND dealer_code IN ({placeholders})
-                    ''', (truck_number, selected_date, *dealer_codes))
-                    today_unloading = cursor.fetchone()
-                    unloaded_today_ppc = today_unloading[0] or 0
-                    unloaded_today_premium = today_unloading[1] or 0
-                    unloaded_today_opc = today_unloading[2] or 0
-                else:
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading 
-                        WHERE truck_number = ? AND unloading_date = ?
-                    ''', (truck_number, selected_date))
-                    today_unloading = cursor.fetchone()
-                    unloaded_today_ppc = today_unloading[0] or 0
-                    unloaded_today_premium = today_unloading[1] or 0
-                    unloaded_today_opc = today_unloading[2] or 0
+                # Check for ANY unloading on this truck on the selected date
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading 
+                    WHERE truck_number = ? AND unloading_date = ?
+                ''', (truck_number, selected_date))
+                today_unloading = cursor.fetchone()
+                unloaded_today_ppc = today_unloading[0] or 0
+                unloaded_today_premium = today_unloading[1] or 0
+                unloaded_today_opc = today_unloading[2] or 0
                 
                 if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                     unloaded_on_selected_date = True
                 
-                # Show previous day vehicles if:
-                # 1. They have pending material, OR
-                # 2. They have unloading on the selected date (even if fully unloaded)
-                if pending_total > 0.01 or unloaded_on_selected_date:
+                # Show previous day vehicles ONLY if they have unloading on the selected date
+                # This ensures we only show vehicles that were unloaded today, not all pending from the month
+                if unloaded_on_selected_date:
                     # For previous day pending vehicles, show ALL unloading for this truck
                     # from month_start to selected_date (not filtered by dealer_code)
                     prev_unloading = []
@@ -3443,6 +3442,8 @@ def get_consolidated_vehicles():
                     })
                     # Add to set so we don't add duplicates
                     trucks_in_list.add(truck_number)
+                    # Mark this truck as added for previous day unloading
+                    added_prev_trucks.add(truck_number)
         except Exception as e:
             pass
         
