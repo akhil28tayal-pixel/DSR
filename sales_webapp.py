@@ -3295,6 +3295,12 @@ def get_consolidated_vehicles():
                 if truck_source_key in added_prev_trucks:
                     continue
                 
+                # Skip if there's a billing on the selected date for this truck+plant_depot
+                # (unloading on selected date should apply to that day's billing, not previous)
+                today_billing_key = f"{truck_number}_{selected_date}_{plant_depot}"
+                if today_billing_key in added_truck_date_sources:
+                    continue
+                
                 # Get unloading for this billing (from billing_date to selected_date)
                 # This ensures we only count unloading that applies to THIS billing
                 cursor.execute('''
