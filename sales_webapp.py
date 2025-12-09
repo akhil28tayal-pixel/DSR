@@ -3437,8 +3437,15 @@ def get_consolidated_vehicles():
                             ''', (truck_number, selected_date))
                         has_unloading_for_this_billing = cursor.fetchone()[0] > 0
                 
-                # Only show if there's unloading on selected date for this billing
-                if has_unloading_for_this_billing:
+                # Calculate remaining pending as of selected date
+                # (pending before today minus any unloading on selected date)
+                remaining_pending_ppc = billed_ppc - unloaded_before_ppc - unloaded_today_ppc
+                remaining_pending_premium = billed_premium - unloaded_before_premium - unloaded_today_premium
+                remaining_pending_opc = billed_opc - unloaded_before_opc - unloaded_today_opc
+                has_pending_material = (remaining_pending_ppc > 0.01 or remaining_pending_premium > 0.01 or remaining_pending_opc > 0.01)
+                
+                # Show if there's pending material OR unloading on selected date for this billing
+                if has_pending_material or has_unloading_for_this_billing:
                     # For previous day vehicles, ONLY show unloading on the selected date
                     prev_unloading = []
                     
