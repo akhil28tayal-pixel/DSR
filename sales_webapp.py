@@ -3334,51 +3334,53 @@ def get_consolidated_vehicles():
                 # Don't show if fully unloaded - even if there's unloading today for this dealer,
                 # that unloading is for a different billing (today's billing), not this previous day billing
                 if pending_total > 0.01:
-                    # For previous day pending vehicles, only show unloading that applies to THIS billing
+                    # For previous day pending vehicles, show ALL unloading for this card's dealers
+                    # from month_start to selected_date
                     prev_unloading = []
                     
-                    # Only include unloading details if some unloading TODAY applies to this billing
-                    if unloaded_on_selected_date:
-                        # Get unloading records filtered by dealer_codes
-                        if dealer_codes:
-                            placeholders = ','.join(['?' for _ in dealer_codes])
-                            cursor.execute(f'''
-                                SELECT id, truck_number, unloading_dealer, unloading_point, 
-                                       ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                                       notes, dealer_code, is_other_dealer, unloading_date
-                                FROM vehicle_unloading 
-                                WHERE truck_number = ? AND unloading_date = ? AND dealer_code IN ({placeholders})
-                            ''', (truck_number, selected_date, *dealer_codes))
-                        else:
-                            cursor.execute('''
-                                SELECT id, truck_number, unloading_dealer, unloading_point, 
-                                       ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                                       notes, dealer_code, is_other_dealer, unloading_date
-                                FROM vehicle_unloading 
-                                WHERE truck_number = ? AND unloading_date = ?
-                            ''', (truck_number, selected_date))
+                    # Get ALL unloading records for this card's dealers (from month_start to selected_date)
+                    if dealer_codes:
+                        placeholders = ','.join(['?' for _ in dealer_codes])
+                        cursor.execute(f'''
+                            SELECT id, truck_number, unloading_dealer, unloading_point, 
+                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                                   notes, dealer_code, is_other_dealer, unloading_date
+                            FROM vehicle_unloading 
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ? 
+                              AND dealer_code IN ({placeholders})
+                            ORDER BY unloading_date
+                        ''', (truck_number, month_start, selected_date, *dealer_codes))
+                    else:
+                        cursor.execute('''
+                            SELECT id, truck_number, unloading_dealer, unloading_point, 
+                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                                   notes, dealer_code, is_other_dealer, unloading_date
+                            FROM vehicle_unloading 
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                            ORDER BY unloading_date
+                        ''', (truck_number, month_start, selected_date))
+                    
+                    for urow in cursor.fetchall():
+                        record_ppc = urow[4] or 0
+                        record_premium = urow[5] or 0
+                        record_opc = urow[6] or 0
                         
-                        for urow in cursor.fetchall():
-                            record_ppc = urow[4] or 0
-                            record_premium = urow[5] or 0
-                            record_opc = urow[6] or 0
-                            
-                            # Only include if there's something to show
-                            if record_ppc > 0.01 or record_premium > 0.01 or record_opc > 0.01:
-                                prev_unloading.append({
-                                    'id': urow[0],
-                                    'truck_number': urow[1],
-                                    'unloading_dealer': urow[2],
-                                    'unloading_point': urow[3],
-                                    'ppc_unloaded': round(record_ppc, 2),
-                                    'premium_unloaded': round(record_premium, 2),
-                                    'opc_unloaded': round(record_opc, 2),
-                                    'unloaded_quantity': round(record_ppc + record_premium + record_opc, 2),
-                                    'notes': urow[8],
-                                    'dealer_code': urow[9],
-                                    'is_other_dealer': bool(urow[10]) if urow[10] is not None else False,
-                                    'unloading_date': urow[11]
-                                })
+                        # Only include if there's something to show
+                        if record_ppc > 0.01 or record_premium > 0.01 or record_opc > 0.01:
+                            prev_unloading.append({
+                                'id': urow[0],
+                                'truck_number': urow[1],
+                                'unloading_dealer': urow[2],
+                                'unloading_point': urow[3],
+                                'ppc_unloaded': round(record_ppc, 2),
+                                'premium_unloaded': round(record_premium, 2),
+                                'opc_unloaded': round(record_opc, 2),
+                                'unloaded_quantity': round(record_ppc + record_premium + record_opc, 2),
+                                'notes': urow[8],
+                                'dealer_code': urow[9],
+                                'is_other_dealer': bool(urow[10]) if urow[10] is not None else False,
+                                'unloading_date': urow[11]
+                            })
                     
                     # Add to list as a previous day pending vehicle
                     # Use unique key with plant_depot to separate PLANT and DEPOT
