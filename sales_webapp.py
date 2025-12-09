@@ -3751,16 +3751,19 @@ def opening_material_balance():
 
 @app.route('/get_dealers_list')
 def get_dealers_list():
-    """Get list of all dealers"""
+    """Get list of all dealers - one entry per dealer_code"""
     try:
         db = SalesCollectionsDatabase(DB_PATH)
         cursor = db.conn.cursor()
         
+        # Group by dealer_code and pick the shortest dealer_name (without suffix like "(8632)")
         cursor.execute('''
-            SELECT DISTINCT dealer_code, dealer_name 
+            SELECT dealer_code, MIN(dealer_name) as dealer_name
             FROM sales_data 
-            WHERE dealer_code IS NOT NULL AND dealer_name IS NOT NULL
-            ORDER BY dealer_name
+            WHERE dealer_code IS NOT NULL AND dealer_code != '' 
+              AND dealer_name IS NOT NULL AND dealer_name != ''
+            GROUP BY dealer_code
+            ORDER BY MIN(dealer_name)
         ''')
         
         dealers = [{'dealer_code': row[0], 'dealer_name': row[1]} for row in cursor.fetchall()]
