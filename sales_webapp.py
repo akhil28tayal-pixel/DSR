@@ -3287,8 +3287,9 @@ def get_consolidated_vehicles():
                 if truck_date_source_key in added_truck_date_sources:
                     continue
                 
-                # Skip if we've already added a card for this truck (only show most recent billing)
-                if truck_number in added_prev_trucks:
+                # Skip if we've already added a card for this truck+plant_depot (only show most recent billing per source)
+                truck_source_key = f"{truck_number}_{plant_depot}"
+                if truck_source_key in added_prev_trucks:
                     continue
                 
                 # Get unloading for this card filtered by dealer_codes
@@ -3359,9 +3360,10 @@ def get_consolidated_vehicles():
                 if unloaded_today_ppc > 0.01 or unloaded_today_premium > 0.01 or unloaded_today_opc > 0.01:
                     unloaded_on_selected_date = True
                 
-                # Show previous day vehicles ONLY if they have unloading on the selected date
-                # This ensures we only show vehicles that were unloaded today, not all pending from the month
-                if unloaded_on_selected_date:
+                # Show previous day vehicles if:
+                # 1. They have pending material (not fully unloaded), OR
+                # 2. They have unloading on the selected date (even if fully unloaded)
+                if pending_total > 0.01 or unloaded_on_selected_date:
                     # For previous day pending vehicles, show ALL unloading for this truck
                     # from month_start to selected_date (not filtered by dealer_code)
                     prev_unloading = []
@@ -3442,8 +3444,8 @@ def get_consolidated_vehicles():
                     })
                     # Add to set so we don't add duplicates
                     trucks_in_list.add(truck_number)
-                    # Mark this truck as added for previous day unloading
-                    added_prev_trucks.add(truck_number)
+                    # Mark this truck+plant_depot as added for previous day unloading
+                    added_prev_trucks.add(f"{truck_number}_{plant_depot}")
         except Exception as e:
             pass
         
