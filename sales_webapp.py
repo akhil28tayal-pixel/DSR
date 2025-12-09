@@ -2765,9 +2765,10 @@ def get_consolidated_vehicles():
                 'total_value': row[12] or 0
             })
         
-        # Build vehicles list - consolidate same truck on same day, separate different days
+        # Build vehicles list - consolidate same truck on same day, but SEPARATE by plant_depot
+        # This ensures PLANT and DEPOT billing for same truck are shown as separate cards
         vehicles_list = []
-        trucks_today = {}  # Consolidate by truck number for today's billing
+        trucks_today = {}  # Consolidate by truck_number + plant_depot for today's billing
         
         for row in invoices_data:
             truck_number = row[0]
@@ -2776,43 +2777,77 @@ def get_consolidated_vehicles():
             premium_qty = row[5] or 0
             opc_qty = row[6] or 0
             total_qty = row[7] or 0
+            plant_depot = row[12] or 'PLANT'  # Default to PLANT if not specified
             
-            if truck_number not in trucks_today:
-                trucks_today[truck_number] = {
+            # Use truck_number + plant_depot as key to separate PLANT and DEPOT
+            card_key = f"{truck_number}_{plant_depot}"
+            
+            if card_key not in trucks_today:
+                # Filter unloading details by dealer_code matching this card's dealers
+                trucks_today[card_key] = {
                     'truck_number': truck_number,
+                    'card_key': card_key,
+                    'plant_depot': plant_depot,
                     'invoices': [],
+                    'dealer_codes': set(),  # Track dealer codes for this card
                     'total_ppc': 0,
                     'total_premium': 0,
                     'total_opc': 0,
                     'total_quantity': 0,
                     'total_value': 0,
                     'billing_date': selected_date,
-                    'unloading_details': unloading_map.get(truck_number, []),
-                    'other_billing': other_billing_map.get(truck_number, [])
+                    'unloading_details': [],  # Will be filtered later
+                    'other_billing': other_billing_map.get(truck_number, []) if plant_depot == 'DEPOT' else []
                 }
             
-            # Add invoice to this truck's list
+            # Add invoice to this card's list
             plant_desc = row[14]
-            trucks_today[truck_number]['invoices'].append({
+            dealer_code = row[2]
+            trucks_today[card_key]['invoices'].append({
                 'invoice_number': invoice_number,
-                'dealer_code': row[2],
+                'dealer_code': dealer_code,
                 'dealer_name': row[3],
                 'ppc_quantity': ppc_qty,
                 'premium_quantity': premium_qty,
                 'opc_quantity': opc_qty,
                 'total_quantity': total_qty,
                 'total_value': row[11] or 0,
-                'plant_depot': row[12],
+                'plant_depot': plant_depot,
                 'plant_description': plant_desc,
-                'depot_abbr': get_depot_abbreviation(plant_desc) if row[12] == 'DEPOT' else None
+                'depot_abbr': get_depot_abbreviation(plant_desc) if plant_depot == 'DEPOT' else None
             })
             
+            # Track dealer codes for this card
+            if dealer_code:
+                trucks_today[card_key]['dealer_codes'].add(dealer_code)
+            
             # Accumulate totals
-            trucks_today[truck_number]['total_ppc'] += ppc_qty
-            trucks_today[truck_number]['total_premium'] += premium_qty
-            trucks_today[truck_number]['total_opc'] += opc_qty
-            trucks_today[truck_number]['total_quantity'] += total_qty
-            trucks_today[truck_number]['total_value'] += row[11] or 0
+            trucks_today[card_key]['total_ppc'] += ppc_qty
+            trucks_today[card_key]['total_premium'] += premium_qty
+            trucks_today[card_key]['total_opc'] += opc_qty
+            trucks_today[card_key]['total_quantity'] += total_qty
+            trucks_today[card_key]['total_value'] += row[11] or 0
+        
+        # Now filter unloading details for each card based on dealer_code
+        for card_key, truck_data in trucks_today.items():
+            truck_number = truck_data['truck_number']
+            dealer_codes = truck_data['dealer_codes']
+            all_unloading = unloading_map.get(truck_number, [])
+            
+            # Filter unloading to only include entries for dealers in this card
+            filtered_unloading = []
+            for u in all_unloading:
+                u_dealer_code = u.get('dealer_code', '')
+                # Include unloading if dealer_code matches OR if no dealer_code (legacy data)
+                if u_dealer_code in dealer_codes or not u_dealer_code:
+                    filtered_unloading.append(u)
+            
+            truck_data['unloading_details'] = filtered_unloading
+            # Convert set to list for JSON serialization
+            truck_data['dealer_codes'] = list(dealer_codes)
+        
+        # Create a set of actual truck numbers billed today (for checking if a truck is billed today)
+        actual_trucks_billed_today = set(td['truck_number'] for td in trucks_today.values())
         
         # Add other_billing quantities to truck totals
         for truck_number, truck_data in trucks_today.items():
@@ -2825,7 +2860,8 @@ def get_consolidated_vehicles():
                 truck_data['total_value'] += ob.get('total_value', 0) or 0
         
         # Now check for previous day billings that weren't fully unloaded
-        for truck_number, truck_data in trucks_today.items():
+        for card_key, truck_data in trucks_today.items():
+            truck_number = truck_data['truck_number']  # Get actual truck number from data
             has_pending_previous = False
             previous_pending_qty = 0
             previous_pending_ppc = 0
@@ -2882,15 +2918,19 @@ def get_consolidated_vehicles():
                 opening_balance_premium = opening_balance_map[truck_number].get('premium', 0)
                 opening_balance_opc = opening_balance_map[truck_number].get('opc', 0)
             
-            # Get total unloaded for this truck (all dates up to today)
+            # Get total unloaded for this card (filtered by dealer_codes)
             total_unloaded_ppc = 0
             total_unloaded_premium = 0
             total_unloaded_opc = 0
+            dealer_codes = set(truck_data.get('dealer_codes', []))
             if truck_number in all_unloading_map:
                 for u in all_unloading_map[truck_number]:
-                    total_unloaded_ppc += u['ppc_unloaded']
-                    total_unloaded_premium += u['premium_unloaded']
-                    total_unloaded_opc += u['opc_unloaded']
+                    u_dealer_code = u.get('dealer_code', '')
+                    # Only count unloading for dealers in this card
+                    if u_dealer_code in dealer_codes or not u_dealer_code:
+                        total_unloaded_ppc += u['ppc_unloaded']
+                        total_unloaded_premium += u['premium_unloaded']
+                        total_unloaded_opc += u['opc_unloaded']
             
             # Unloading that applies to today's billing = total unloaded - opening balance consumed - previous billings consumed
             # FIFO: Opening balance first, then previous billings, then today's billing
@@ -3086,7 +3126,7 @@ def get_consolidated_vehicles():
                 remaining = remaining_ppc + remaining_premium + remaining_opc
                 
                 # Check if this truck is already in today's billing
-                truck_already_billed_today = truck_number in trucks_today
+                truck_already_billed_today = truck_number in actual_trucks_billed_today
                 
                 # Check if any unloading that APPLIES TO OPENING happened on the selected date
                 unloaded_today = any(u['unloading_date'] == selected_date for u in opening_unloading)
@@ -3415,7 +3455,7 @@ def get_consolidated_vehicles():
                         'previous_pending_opc': 0,
                         'previous_billings': [],
                         'is_rebilled': False,
-                        'truck_also_billed_today': truck_number in trucks_today,
+                        'truck_also_billed_today': truck_number in actual_trucks_billed_today,
                         'remaining_ppc': round(pending_ppc, 2),
                         'remaining_premium': round(pending_premium, 2),
                         'remaining_opc': round(pending_opc, 2),
