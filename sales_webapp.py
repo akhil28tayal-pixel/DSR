@@ -2901,40 +2901,41 @@ def get_consolidated_vehicles():
             previous_pending_premium = 0
             previous_pending_opc = 0
             
-            # FIFO: Calculate how much of today's unloading is consumed by previous billings
-            # Query previous billings for this truck (before selected_date)
+            # FIFO: Calculate remaining for today's billing
+            # Get total billing for this truck up to and including selected_date
             plant_depot = truck_data.get('plant_depot', 'PLANT')
             cursor.execute('''
                 SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
                 FROM sales_data
-                WHERE truck_number = ? AND sale_date >= ? AND sale_date < ? AND plant_depot = ?
+                WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND plant_depot = ?
             ''', (truck_number, month_start, selected_date, plant_depot))
-            prev_billing = cursor.fetchone()
-            prev_billed_ppc = prev_billing[0] or 0
-            prev_billed_premium = prev_billing[1] or 0
-            prev_billed_opc = prev_billing[2] or 0
+            total_billing = cursor.fetchone()
+            total_billed_ppc = total_billing[0] or 0
+            total_billed_premium = total_billing[1] or 0
+            total_billed_opc = total_billing[2] or 0
             
-            # Get unloading for previous billings (from month_start to day before selected_date)
+            # Get total unloading for this truck up to and including selected_date
             cursor.execute('''
                 SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                 FROM vehicle_unloading
-                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
             ''', (truck_number, month_start, selected_date))
-            prev_unloaded = cursor.fetchone()
-            prev_unloaded_ppc = prev_unloaded[0] or 0
-            prev_unloaded_premium = prev_unloaded[1] or 0
-            prev_unloaded_opc = prev_unloaded[2] or 0
+            total_unloading = cursor.fetchone()
+            all_unloaded_ppc = total_unloading[0] or 0
+            all_unloaded_premium = total_unloading[1] or 0
+            all_unloaded_opc = total_unloading[2] or 0
             
-            # Calculate pending from previous billings (before today's unloading)
-            prev_pending_ppc = max(0, prev_billed_ppc - prev_unloaded_ppc)
-            prev_pending_premium = max(0, prev_billed_premium - prev_unloaded_premium)
-            prev_pending_opc = max(0, prev_billed_opc - prev_unloaded_opc)
+            # Total pending for this truck = total billed - total unloaded
+            total_pending_ppc = max(0, total_billed_ppc - all_unloaded_ppc)
+            total_pending_premium = max(0, total_billed_premium - all_unloaded_premium)
+            total_pending_opc = max(0, total_billed_opc - all_unloaded_opc)
             
-            # Store for FIFO calculation later
-            truck_data['prev_pending_for_fifo'] = {
-                'ppc': prev_pending_ppc,
-                'premium': prev_pending_premium,
-                'opc': prev_pending_opc
+            # FIFO: Pending is attributed to the LAST billing (today's billing)
+            # So today's remaining = min(today's billed, total pending)
+            truck_data['total_pending_for_fifo'] = {
+                'ppc': total_pending_ppc,
+                'premium': total_pending_premium,
+                'opc': total_pending_opc
             }
             
             truck_data['has_pending_previous'] = has_pending_previous
@@ -2988,32 +2989,23 @@ def get_consolidated_vehicles():
                             total_unloaded_premium += u['premium_unloaded']
                             total_unloaded_opc += u['opc_unloaded']
             
-            # FIFO: Today's unloading applies to previous billings first, then today's billing
-            # Get previous pending from FIFO calculation
-            prev_pending_fifo = truck_data.get('prev_pending_for_fifo', {'ppc': 0, 'premium': 0, 'opc': 0})
-            prev_pending_ppc = prev_pending_fifo['ppc']
-            prev_pending_premium = prev_pending_fifo['premium']
-            prev_pending_opc = prev_pending_fifo['opc']
+            # FIFO: Total pending is attributed to today's billing (the last billing)
+            # Get total pending from FIFO calculation
+            total_pending_fifo = truck_data.get('total_pending_for_fifo', {'ppc': 0, 'premium': 0, 'opc': 0})
+            total_pending_ppc = total_pending_fifo['ppc']
+            total_pending_premium = total_pending_fifo['premium']
+            total_pending_opc = total_pending_fifo['opc']
             
-            # Today's unloading consumed by previous billings (FIFO)
-            consumed_by_prev_ppc = min(prev_pending_ppc, total_unloaded_ppc)
-            consumed_by_prev_premium = min(prev_pending_premium, total_unloaded_premium)
-            consumed_by_prev_opc = min(prev_pending_opc, total_unloaded_opc)
+            # Today's remaining = min(today's billed, total pending)
+            # This ensures that if total pending > today's billed, the excess shows on previous billings
+            remaining_ppc = min(truck_data['total_ppc'], total_pending_ppc)
+            remaining_premium = min(truck_data['total_premium'], total_pending_premium)
+            remaining_opc = min(truck_data['total_opc'], total_pending_opc)
             
-            # Unloading available for today's billing = total unloaded - consumed by previous
-            available_for_today_ppc = max(0, total_unloaded_ppc - consumed_by_prev_ppc)
-            available_for_today_premium = max(0, total_unloaded_premium - consumed_by_prev_premium)
-            available_for_today_opc = max(0, total_unloaded_opc - consumed_by_prev_opc)
-            
-            # For today's billing card, calculate remaining = billed - available unloading
-            unloaded_for_today_ppc = min(truck_data['total_ppc'], available_for_today_ppc)
-            unloaded_for_today_premium = min(truck_data['total_premium'], available_for_today_premium)
-            unloaded_for_today_opc = min(truck_data['total_opc'], available_for_today_opc)
-            
-            # Calculate remaining pending for today's billing
-            remaining_ppc = max(0, truck_data['total_ppc'] - unloaded_for_today_ppc)
-            remaining_premium = max(0, truck_data['total_premium'] - unloaded_for_today_premium)
-            remaining_opc = max(0, truck_data['total_opc'] - unloaded_for_today_opc)
+            # Calculate how much was unloaded for today's billing
+            unloaded_for_today_ppc = truck_data['total_ppc'] - remaining_ppc
+            unloaded_for_today_premium = truck_data['total_premium'] - remaining_premium
+            unloaded_for_today_opc = truck_data['total_opc'] - remaining_opc
             remaining_total = remaining_ppc + remaining_premium + remaining_opc
             
             # Add calculated remaining to truck_data for frontend display
@@ -3350,46 +3342,49 @@ def get_consolidated_vehicles():
                 today_billing_key = f"{truck_number}_{selected_date}_{plant_depot}"
                 has_today_billing = today_billing_key in added_truck_date_sources
                 
-                # Get unloading for this billing (from billing_date to selected_date inclusive)
-                # FIFO: unloading on selected_date applies to previous billing first
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, billing_date, selected_date))
-                all_truck_unloading = cursor.fetchone()
-                
                 # Check if this truck has multiple cards (PLANT + DEPOT) on the same billing date
-                # If so, filter by dealer_code. Otherwise, use all unloading.
                 cursor.execute('''
                     SELECT COUNT(DISTINCT plant_depot) FROM sales_data 
                     WHERE truck_number = ? AND sale_date = ?
                 ''', (truck_number, billing_date))
                 plant_depot_count = cursor.fetchone()[0] or 1
                 
-                if plant_depot_count > 1 and dealer_codes:
-                    # Multiple plant_depot on same day - filter by dealer_code
-                    placeholders = ','.join(['?' for _ in dealer_codes])
-                    cursor.execute(f'''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                          AND dealer_code IN ({placeholders})
-                    ''', (truck_number, billing_date, selected_date, *dealer_codes))
-                    card_unloading = cursor.fetchone()
-                    this_card_unloaded_ppc = card_unloading[0] or 0
-                    this_card_unloaded_premium = card_unloading[1] or 0
-                    this_card_unloaded_opc = card_unloading[2] or 0
-                else:
-                    # Single plant_depot - use all unloading
-                    this_card_unloaded_ppc = all_truck_unloading[0] or 0
-                    this_card_unloaded_premium = all_truck_unloading[1] or 0
-                    this_card_unloaded_opc = all_truck_unloading[2] or 0
+                # FIFO: Get total billing BEFORE this billing date (these consume unloading first)
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ? AND plant_depot = ?
+                ''', (truck_number, month_start, billing_date, plant_depot))
+                earlier_billing = cursor.fetchone()
+                earlier_billed_ppc = earlier_billing[0] or 0
+                earlier_billed_premium = earlier_billing[1] or 0
+                earlier_billed_opc = earlier_billing[2] or 0
+                
+                # Get total unloading from month_start to selected_date
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                total_unloading = cursor.fetchone()
+                total_unloaded_ppc = total_unloading[0] or 0
+                total_unloaded_premium = total_unloading[1] or 0
+                total_unloaded_opc = total_unloading[2] or 0
+                
+                # FIFO: Earlier billings consume unloading first
+                consumed_by_earlier_ppc = min(earlier_billed_ppc, total_unloaded_ppc)
+                consumed_by_earlier_premium = min(earlier_billed_premium, total_unloaded_premium)
+                consumed_by_earlier_opc = min(earlier_billed_opc, total_unloaded_opc)
+                
+                # Unloading available for THIS billing = total - consumed by earlier
+                available_for_this_ppc = max(0, total_unloaded_ppc - consumed_by_earlier_ppc)
+                available_for_this_premium = max(0, total_unloaded_premium - consumed_by_earlier_premium)
+                available_for_this_opc = max(0, total_unloaded_opc - consumed_by_earlier_opc)
                 
                 # Calculate how much of THIS billing is unloaded vs pending
-                this_unloaded_ppc = min(billed_ppc, this_card_unloaded_ppc)
-                this_unloaded_premium = min(billed_premium, this_card_unloaded_premium)
-                this_unloaded_opc = min(billed_opc, this_card_unloaded_opc)
+                this_unloaded_ppc = min(billed_ppc, available_for_this_ppc)
+                this_unloaded_premium = min(billed_premium, available_for_this_premium)
+                this_unloaded_opc = min(billed_opc, available_for_this_opc)
                 
                 # Calculate pending for this specific billing
                 pending_ppc = billed_ppc - this_unloaded_ppc
@@ -3398,17 +3393,31 @@ def get_consolidated_vehicles():
                 pending_total = pending_ppc + pending_premium + pending_opc
                 this_total_unloaded = this_unloaded_ppc + this_unloaded_premium + this_unloaded_opc
                 
-                # Check if this billing was already fully unloaded BEFORE the selected date
-                # If so, skip it - the unloading on selected date is for a different (later) billing
+                # Check if this billing was already fully unloaded BEFORE the selected date (using FIFO)
+                # Get total unloading from month_start to before selected_date
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                     FROM vehicle_unloading
                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
-                ''', (truck_number, billing_date, selected_date))
-                unloaded_before_today = cursor.fetchone()
-                unloaded_before_ppc = min(billed_ppc, unloaded_before_today[0] or 0)
-                unloaded_before_premium = min(billed_premium, unloaded_before_today[1] or 0)
-                unloaded_before_opc = min(billed_opc, unloaded_before_today[2] or 0)
+                ''', (truck_number, month_start, selected_date))
+                unloading_before_today = cursor.fetchone()
+                unloaded_before_today_ppc = unloading_before_today[0] or 0
+                unloaded_before_today_premium = unloading_before_today[1] or 0
+                unloaded_before_today_opc = unloading_before_today[2] or 0
+                
+                # FIFO: Earlier billings consume unloading first
+                consumed_before_ppc = min(earlier_billed_ppc, unloaded_before_today_ppc)
+                consumed_before_premium = min(earlier_billed_premium, unloaded_before_today_premium)
+                consumed_before_opc = min(earlier_billed_opc, unloaded_before_today_opc)
+                
+                # Unloading available for THIS billing before today
+                available_before_ppc = max(0, unloaded_before_today_ppc - consumed_before_ppc)
+                available_before_premium = max(0, unloaded_before_today_premium - consumed_before_premium)
+                available_before_opc = max(0, unloaded_before_today_opc - consumed_before_opc)
+                
+                unloaded_before_ppc = min(billed_ppc, available_before_ppc)
+                unloaded_before_premium = min(billed_premium, available_before_premium)
+                unloaded_before_opc = min(billed_opc, available_before_opc)
                 
                 # If billing was fully unloaded before selected date, skip this card
                 was_fully_unloaded_before = (
