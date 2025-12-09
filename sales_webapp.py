@@ -2321,11 +2321,25 @@ def get_all_dealers():
             ORDER BY MIN(dealer_name)
         ''')
         
+        # First pass: collect all dealers
+        raw_dealers = [(row[0], row[1]) for row in cursor.fetchall()]
+        
+        # Find duplicate names
+        name_counts = {}
+        for dealer_code, dealer_name in raw_dealers:
+            name_counts[dealer_name] = name_counts.get(dealer_name, 0) + 1
+        
+        # Build final list, appending last 4 digits for duplicates
         dealers = []
-        for row in cursor.fetchall():
+        for dealer_code, dealer_name in raw_dealers:
+            if name_counts.get(dealer_name, 0) > 1:
+                # Append last 4 digits of dealer_code for duplicates
+                display_name = f"{dealer_name} ({str(dealer_code)[-4:]})"
+            else:
+                display_name = dealer_name
             dealers.append({
-                'dealer_code': row[0],
-                'dealer_name': row[1]
+                'dealer_code': dealer_code,
+                'dealer_name': display_name
             })
         
         db.close()
@@ -3775,9 +3789,28 @@ def get_dealers_list():
             ORDER BY MIN(dealer_name)
         ''')
         
-        dealers = [{'dealer_code': row[0], 'dealer_name': row[1]} for row in cursor.fetchall()]
-        db.close()
+        # First pass: collect all dealers
+        raw_dealers = [(row[0], row[1]) for row in cursor.fetchall()]
         
+        # Find duplicate names
+        name_counts = {}
+        for dealer_code, dealer_name in raw_dealers:
+            name_counts[dealer_name] = name_counts.get(dealer_name, 0) + 1
+        
+        # Build final list, appending last 4 digits for duplicates
+        dealers = []
+        for dealer_code, dealer_name in raw_dealers:
+            if name_counts.get(dealer_name, 0) > 1:
+                # Append last 4 digits of dealer_code for duplicates
+                display_name = f"{dealer_name} ({str(dealer_code)[-4:]})"
+            else:
+                display_name = dealer_name
+            dealers.append({
+                'dealer_code': dealer_code,
+                'dealer_name': display_name
+            })
+        
+        db.close()
         return jsonify({'dealers': dealers})
         
     except Exception as e:
