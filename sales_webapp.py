@@ -2916,17 +2916,17 @@ def get_consolidated_vehicles():
                 opening_balance_premium = opening_balance_map[truck_number].get('premium', 0)
                 opening_balance_opc = opening_balance_map[truck_number].get('opc', 0)
             
-            # Get total unloaded for this card
-            # If single card for truck, count ALL unloading
-            # If multiple cards (PLANT + DEPOT), filter by dealer_code
+            # Get total unloaded for this card - ONLY count unloading on selected_date
+            # (unloading on previous days applies to previous billings)
             total_unloaded_ppc = 0
             total_unloaded_premium = 0
             total_unloaded_opc = 0
             dealer_codes = set(truck_data.get('dealer_codes', []))
             dealer_codes_str = set(str(dc) for dc in dealer_codes)
             
-            if truck_number in all_unloading_map:
-                for u in all_unloading_map[truck_number]:
+            # Use unloading_map which only contains unloading on selected_date
+            if truck_number in unloading_map:
+                for u in unloading_map[truck_number]:
                     # If single card, count all unloading
                     # If multiple cards, filter by dealer_code
                     if truck_card_count.get(truck_number, 1) == 1:
