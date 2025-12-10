@@ -2919,55 +2919,68 @@ def get_consolidated_vehicles():
             # Get dealer_codes for this card
             card_dealer_codes = set(truck_data.get('dealer_codes', []))
             
-            if plant_depot_count > 1 and card_dealer_codes:
-                # For trucks with PLANT+DEPOT, calculate remaining per card using dealer_code filtering
+            # First calculate global totals
+            cursor.execute('''
+                SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
+                FROM sales_data
+                WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+            ''', (truck_number, month_start, selected_date))
+            total_billing = cursor.fetchone()
+            global_billed_ppc = (total_billing[0] or 0) + opening_ppc
+            global_billed_premium = (total_billing[1] or 0) + opening_premium
+            global_billed_opc = (total_billing[2] or 0) + opening_opc
+            
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                FROM vehicle_unloading
+                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+            ''', (truck_number, month_start, selected_date))
+            total_unloading = cursor.fetchone()
+            global_unloaded_ppc = total_unloading[0] or 0
+            global_unloaded_premium = total_unloading[1] or 0
+            global_unloaded_opc = total_unloading[2] or 0
+            
+            # Global pending for this truck
+            global_pending_ppc = max(0, global_billed_ppc - global_unloaded_ppc)
+            global_pending_premium = max(0, global_billed_premium - global_unloaded_premium)
+            global_pending_opc = max(0, global_billed_opc - global_unloaded_opc)
+            
+            # For trucks with multiple plant_depot types, calculate card pending based on dealer_code
+            # But only if there's global pending (otherwise all cards show 0)
+            if plant_depot_count > 1 and card_dealer_codes and global_pending_ppc + global_pending_premium + global_pending_opc > 0.01:
+                # Get unloading for this card's dealer_codes
                 placeholders = ','.join(['?' for _ in card_dealer_codes])
-                cursor.execute(f'''
-                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND dealer_code IN ({placeholders})
-                ''', (truck_number, month_start, selected_date, *card_dealer_codes))
-                total_billing = cursor.fetchone()
-                total_billed_ppc = total_billing[0] or 0
-                total_billed_premium = total_billing[1] or 0
-                total_billed_opc = total_billing[2] or 0
-                
                 cursor.execute(f'''
                     SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                     FROM vehicle_unloading
                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                       AND dealer_code IN ({placeholders})
                 ''', (truck_number, month_start, selected_date, *card_dealer_codes))
-                total_unloading = cursor.fetchone()
-                all_unloaded_ppc = total_unloading[0] or 0
-                all_unloaded_premium = total_unloading[1] or 0
-                all_unloaded_opc = total_unloading[2] or 0
-            else:
-                # For trucks with only PLANT or only DEPOT, use global FIFO
-                cursor.execute('''
-                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
-                ''', (truck_number, month_start, selected_date))
-                total_billing = cursor.fetchone()
-                total_billed_ppc = (total_billing[0] or 0) + opening_ppc
-                total_billed_premium = (total_billing[1] or 0) + opening_premium
-                total_billed_opc = (total_billing[2] or 0) + opening_opc
+                card_unloading = cursor.fetchone()
+                card_unloaded_ppc = card_unloading[0] or 0
+                card_unloaded_premium = card_unloading[1] or 0
+                card_unloaded_opc = card_unloading[2] or 0
                 
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, month_start, selected_date))
-                total_unloading = cursor.fetchone()
-                all_unloaded_ppc = total_unloading[0] or 0
-                all_unloaded_premium = total_unloading[1] or 0
-                all_unloaded_opc = total_unloading[2] or 0
-            
-            # Total pending for this truck = total billed - total unloaded
-            total_pending_ppc = max(0, total_billed_ppc - all_unloaded_ppc)
-            total_pending_premium = max(0, total_billed_premium - all_unloaded_premium)
-            total_pending_opc = max(0, total_billed_opc - all_unloaded_opc)
+                # Get billing for this card's dealer_codes
+                cursor.execute(f'''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND dealer_code IN ({placeholders})
+                ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+                card_billing = cursor.fetchone()
+                card_billed_ppc = card_billing[0] or 0
+                card_billed_premium = card_billing[1] or 0
+                card_billed_opc = card_billing[2] or 0
+                
+                # Card's pending = card's billing - card's unloading
+                total_pending_ppc = max(0, card_billed_ppc - card_unloaded_ppc)
+                total_pending_premium = max(0, card_billed_premium - card_unloaded_premium)
+                total_pending_opc = max(0, card_billed_opc - card_unloaded_opc)
+            else:
+                # Single plant_depot OR no global pending - use global values
+                total_pending_ppc = global_pending_ppc
+                total_pending_premium = global_pending_premium
+                total_pending_opc = global_pending_opc
             
             # FIFO: Pending is attributed to the LAST billing (today's billing)
             # So today's remaining = min(today's billed, total pending)
@@ -3456,9 +3469,9 @@ def get_consolidated_vehicles():
                 pending_for_this_date_premium = max(0, truck_pending_premium - pending_for_later_premium)
                 pending_for_this_date_opc = max(0, truck_pending_opc - pending_for_later_opc)
                 
-                # For trucks with multiple plant_depot types, calculate this CARD's pending
-                # based on dealer_code filtering
-                if plant_depot_count > 1 and dealer_codes:
+                # For trucks with multiple plant_depot types, calculate card pending based on dealer_code
+                # But only if there's global pending (otherwise all cards show 0)
+                if plant_depot_count > 1 and dealer_codes and pending_for_this_date_ppc + pending_for_this_date_premium + pending_for_this_date_opc > 0.01:
                     # Get unloading for this card's dealer_codes
                     placeholders = ','.join(['?' for _ in dealer_codes])
                     cursor.execute(f'''
@@ -3472,12 +3485,12 @@ def get_consolidated_vehicles():
                     card_unloaded_premium = card_unloading[1] or 0
                     card_unloaded_opc = card_unloading[2] or 0
                     
-                    # Card's pending = card's billing - card's unloading
+                    # Card's pending = card's billing - card's unloading (capped at 0)
                     pending_ppc = max(0, billed_ppc - card_unloaded_ppc)
                     pending_premium = max(0, billed_premium - card_unloaded_premium)
                     pending_opc = max(0, billed_opc - card_unloaded_opc)
                 else:
-                    # Single plant_depot - use global FIFO
+                    # Single plant_depot OR no global pending - use global FIFO
                     pending_ppc = min(billed_ppc, pending_for_this_date_ppc)
                     pending_premium = min(billed_premium, pending_for_this_date_premium)
                     pending_opc = min(billed_opc, pending_for_this_date_opc)
