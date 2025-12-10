@@ -3338,11 +3338,6 @@ def get_consolidated_vehicles():
                 if truck_date_source_key in added_truck_date_sources:
                     continue
                 
-                # Skip if we've already added a card for this truck+plant_depot (only show most recent billing per source)
-                truck_source_key = f"{truck_number}_{plant_depot}"
-                if truck_source_key in added_prev_trucks:
-                    continue
-                
                 # Check if there's a billing on the selected date for this truck+plant_depot
                 today_billing_key = f"{truck_number}_{selected_date}_{plant_depot}"
                 has_today_billing = today_billing_key in added_truck_date_sources
@@ -3392,10 +3387,10 @@ def get_consolidated_vehicles():
                 later_billed_premium = later_billing[1] or 0
                 later_billed_opc = later_billing[2] or 0
                 
-                # Total billing for this truck = opening + earlier + this + later
-                total_billed_ppc = opening_ppc + earlier_billed_ppc + billed_ppc + later_billed_ppc
-                total_billed_premium = opening_premium + earlier_billed_premium + billed_premium + later_billed_premium
-                total_billed_opc = opening_opc + earlier_billed_opc + billed_opc + later_billed_opc
+                # Total billing for this truck = earlier (includes opening) + this + later
+                total_billed_ppc = earlier_billed_ppc + billed_ppc + later_billed_ppc
+                total_billed_premium = earlier_billed_premium + billed_premium + later_billed_premium
+                total_billed_opc = earlier_billed_opc + billed_opc + later_billed_opc
                 
                 # Total pending for this truck
                 truck_pending_ppc = max(0, total_billed_ppc - total_unloaded_ppc)
@@ -3507,12 +3502,9 @@ def get_consolidated_vehicles():
                             ''', (truck_number, selected_date))
                         has_unloading_for_this_billing = cursor.fetchone()[0] > 0
                 
-                # Calculate remaining pending as of selected date
-                # (pending before today minus any unloading on selected date)
-                remaining_pending_ppc = billed_ppc - unloaded_before_ppc - unloaded_today_ppc
-                remaining_pending_premium = billed_premium - unloaded_before_premium - unloaded_today_premium
-                remaining_pending_opc = billed_opc - unloaded_before_opc - unloaded_today_opc
-                has_pending_material = (remaining_pending_ppc > 0.01 or remaining_pending_premium > 0.01 or remaining_pending_opc > 0.01)
+                # Use FIFO-calculated pending values
+                # pending_ppc, pending_premium, pending_opc were calculated above using FIFO
+                has_pending_material = (pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01)
                 
                 # Show if there's pending material OR unloading on selected date for this billing
                 if has_pending_material or has_unloading_for_this_billing:
@@ -3579,9 +3571,9 @@ def get_consolidated_vehicles():
                             })
                     
                     # Add to list as a previous day pending vehicle
-                    # Use unique key with plant_depot to separate PLANT and DEPOT
+                    # Use unique key with billing_date and plant_depot to separate different billing dates
                     vehicles_list.append({
-                        'truck_number': f"{truck_number}_PREV_{plant_depot}",
+                        'truck_number': f"{truck_number}_PREV_{billing_date}_{plant_depot}",
                         'display_truck_number': truck_number,
                         'billing_date': billing_date,
                         'plant_depot': plant_depot,
@@ -3622,8 +3614,8 @@ def get_consolidated_vehicles():
                     })
                     # Add to set so we don't add duplicates
                     trucks_in_list.add(truck_number)
-                    # Mark this truck+plant_depot as added for previous day unloading
-                    added_prev_trucks.add(f"{truck_number}_{plant_depot}")
+                    # Mark this truck+billing_date+plant_depot as added for previous day unloading
+                    added_prev_trucks.add(f"{truck_number}_{billing_date}_{plant_depot}")
         except Exception as e:
             pass
         
