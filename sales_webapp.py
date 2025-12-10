@@ -3439,13 +3439,20 @@ def get_consolidated_vehicles():
                 unloaded_before_premium = min(billed_premium, available_before_premium)
                 unloaded_before_opc = min(billed_opc, available_before_opc)
                 
-                # If billing was fully unloaded before selected date, skip this card
+                # Check if there's any unloading on selected date for this truck
+                cursor.execute('''
+                    SELECT COUNT(*) FROM vehicle_unloading 
+                    WHERE truck_number = ? AND unloading_date = ?
+                ''', (truck_number, selected_date))
+                has_unloading_today = cursor.fetchone()[0] > 0
+                
+                # If billing was fully unloaded before selected date AND no unloading today, skip this card
                 was_fully_unloaded_before = (
                     unloaded_before_ppc >= billed_ppc - 0.01 and
                     unloaded_before_premium >= billed_premium - 0.01 and
                     unloaded_before_opc >= billed_opc - 0.01
                 )
-                if was_fully_unloaded_before:
+                if was_fully_unloaded_before and not has_unloading_today:
                     continue
                 
                 
