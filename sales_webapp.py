@@ -2909,22 +2909,55 @@ def get_consolidated_vehicles():
             opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
             opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
             
+            # Check if this truck has multiple plant_depot types
             cursor.execute('''
-                SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
-                FROM sales_data
-                WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND plant_depot = ?
-            ''', (truck_number, month_start, selected_date, plant_depot))
-            total_billing = cursor.fetchone()
-            total_billed_ppc = (total_billing[0] or 0) + opening_ppc
-            total_billed_premium = (total_billing[1] or 0) + opening_premium
-            total_billed_opc = (total_billing[2] or 0) + opening_opc
+                SELECT COUNT(DISTINCT plant_depot) FROM sales_data 
+                WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+            ''', (truck_number, month_start, selected_date))
+            plant_depot_count = cursor.fetchone()[0] or 1
+            
+            # Get dealer_codes for this card
+            card_dealer_codes = set(truck_data.get('dealer_codes', []))
+            
+            if plant_depot_count > 1 and card_dealer_codes:
+                # Filter by dealer_codes when truck has multiple plant_depot types
+                placeholders = ','.join(['?' for _ in card_dealer_codes])
+                cursor.execute(f'''
+                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND dealer_code IN ({placeholders})
+                ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+                total_billing = cursor.fetchone()
+                total_billed_ppc = total_billing[0] or 0
+                total_billed_premium = total_billing[1] or 0
+                total_billed_opc = total_billing[2] or 0
+            else:
+                cursor.execute('''
+                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND plant_depot = ?
+                ''', (truck_number, month_start, selected_date, plant_depot))
+                total_billing = cursor.fetchone()
+                total_billed_ppc = (total_billing[0] or 0) + opening_ppc
+                total_billed_premium = (total_billing[1] or 0) + opening_premium
+                total_billed_opc = (total_billing[2] or 0) + opening_opc
             
             # Get total unloading for this truck up to and including selected_date
-            cursor.execute('''
-                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                FROM vehicle_unloading
-                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-            ''', (truck_number, month_start, selected_date))
+            # Filter by dealer_codes when truck has multiple plant_depot types
+            if plant_depot_count > 1 and card_dealer_codes:
+                placeholders = ','.join(['?' for _ in card_dealer_codes])
+                cursor.execute(f'''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                      AND dealer_code IN ({placeholders})
+                ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+            else:
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck_number, month_start, selected_date))
             total_unloading = cursor.fetchone()
             all_unloaded_ppc = total_unloading[0] or 0
             all_unloaded_premium = total_unloading[1] or 0
@@ -3342,48 +3375,80 @@ def get_consolidated_vehicles():
                 today_billing_key = f"{truck_number}_{selected_date}_{plant_depot}"
                 has_today_billing = today_billing_key in added_truck_date_sources
                 
-                # Check if this truck has multiple cards (PLANT + DEPOT) on the same billing date
+                # Check if this truck has multiple plant_depot types in the month
                 cursor.execute('''
                     SELECT COUNT(DISTINCT plant_depot) FROM sales_data 
-                    WHERE truck_number = ? AND sale_date = ?
-                ''', (truck_number, billing_date))
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                ''', (truck_number, month_start, selected_date))
                 plant_depot_count = cursor.fetchone()[0] or 1
                 
                 # FIFO: Get total billing BEFORE this billing date (these consume unloading first)
                 # Include opening balance from previous month
-                # Use ALL billing (not filtered by plant_depot) since unloading is not filtered
+                # Filter by dealer_codes if this truck has multiple plant_depot types
                 opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
                 opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
                 opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
                 
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
-                ''', (truck_number, month_start, billing_date))
-                earlier_billing = cursor.fetchone()
-                earlier_billed_ppc = (earlier_billing[0] or 0) + opening_ppc
-                earlier_billed_premium = (earlier_billing[1] or 0) + opening_premium
-                earlier_billed_opc = (earlier_billing[2] or 0) + opening_opc
+                if plant_depot_count > 1 and dealer_codes:
+                    # Filter by dealer_codes to match billing with unloading
+                    # Don't add opening balance when filtering by dealer_codes (opening is for whole truck)
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ? AND dealer_code IN ({placeholders})
+                    ''', (truck_number, month_start, billing_date, *dealer_codes))
+                    earlier_billing = cursor.fetchone()
+                    earlier_billed_ppc = earlier_billing[0] or 0
+                    earlier_billed_premium = earlier_billing[1] or 0
+                    earlier_billed_opc = earlier_billing[2] or 0
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck_number, month_start, billing_date))
+                    earlier_billing = cursor.fetchone()
+                    earlier_billed_ppc = (earlier_billing[0] or 0) + opening_ppc
+                    earlier_billed_premium = (earlier_billing[1] or 0) + opening_premium
+                    earlier_billed_opc = (earlier_billing[2] or 0) + opening_opc
                 
                 # Get total unloading from month_start to selected_date
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, month_start, selected_date))
+                # Filter by dealer_codes if this truck has multiple plant_depot cards
+                if plant_depot_count > 1 and dealer_codes:
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                          AND dealer_code IN ({placeholders})
+                    ''', (truck_number, month_start, selected_date, *dealer_codes))
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                    ''', (truck_number, month_start, selected_date))
                 total_unloading = cursor.fetchone()
                 total_unloaded_ppc = total_unloading[0] or 0
                 total_unloaded_premium = total_unloading[1] or 0
                 total_unloaded_opc = total_unloading[2] or 0
                 
                 # Get billing AFTER this billing date (up to and including selected_date)
-                # Use ALL billing (not filtered by plant_depot) since unloading is not filtered
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
-                ''', (truck_number, billing_date, selected_date))
+                # Filter by dealer_codes if this truck has multiple plant_depot types
+                if plant_depot_count > 1 and dealer_codes:
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date > ? AND sale_date <= ? AND dealer_code IN ({placeholders})
+                    ''', (truck_number, billing_date, selected_date, *dealer_codes))
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
+                    ''', (truck_number, billing_date, selected_date))
                 later_billing = cursor.fetchone()
                 later_billed_ppc = later_billing[0] or 0
                 later_billed_premium = later_billing[1] or 0
@@ -3417,11 +3482,21 @@ def get_consolidated_vehicles():
                 
                 # Check if this billing was already fully unloaded BEFORE the selected date (using FIFO)
                 # Get total unloading from month_start to before selected_date
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
-                ''', (truck_number, month_start, selected_date))
+                # Filter by dealer_codes if this truck has multiple plant_depot cards
+                if plant_depot_count > 1 and dealer_codes:
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                          AND dealer_code IN ({placeholders})
+                    ''', (truck_number, month_start, selected_date, *dealer_codes))
+                else:
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                    ''', (truck_number, month_start, selected_date))
                 unloading_before_today = cursor.fetchone()
                 unloaded_before_today_ppc = unloading_before_today[0] or 0
                 unloaded_before_today_premium = unloading_before_today[1] or 0
