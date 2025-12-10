@@ -3412,6 +3412,17 @@ def get_consolidated_vehicles():
                 total_unloaded_premium = total_unloading[1] or 0
                 total_unloaded_opc = total_unloading[2] or 0
                 
+                # Get billing ON this billing date (ALL for the truck, not just this card)
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date = ?
+                ''', (truck_number, billing_date))
+                this_date_billing = cursor.fetchone()
+                this_date_billed_ppc = this_date_billing[0] or 0
+                this_date_billed_premium = this_date_billing[1] or 0
+                this_date_billed_opc = this_date_billing[2] or 0
+                
                 # Get billing AFTER this billing date (up to and including selected_date)
                 # Use ALL billing (not filtered by dealer_code) for correct FIFO calculation
                 cursor.execute('''
@@ -3424,26 +3435,53 @@ def get_consolidated_vehicles():
                 later_billed_premium = later_billing[1] or 0
                 later_billed_opc = later_billing[2] or 0
                 
-                # Total billing for this truck = earlier (includes opening) + this + later
-                total_billed_ppc = earlier_billed_ppc + billed_ppc + later_billed_ppc
-                total_billed_premium = earlier_billed_premium + billed_premium + later_billed_premium
-                total_billed_opc = earlier_billed_opc + billed_opc + later_billed_opc
+                # Total billing for this truck = earlier (includes opening) + this date (ALL) + later
+                total_billed_ppc = earlier_billed_ppc + this_date_billed_ppc + later_billed_ppc
+                total_billed_premium = earlier_billed_premium + this_date_billed_premium + later_billed_premium
+                total_billed_opc = earlier_billed_opc + this_date_billed_opc + later_billed_opc
                 
                 # Total pending for this truck
                 truck_pending_ppc = max(0, total_billed_ppc - total_unloaded_ppc)
                 truck_pending_premium = max(0, total_billed_premium - total_unloaded_premium)
                 truck_pending_opc = max(0, total_billed_opc - total_unloaded_opc)
                 
-                # FIFO: Pending is attributed to LATER billings first, then this billing
+                # FIFO: Pending is attributed to LATER billings first, then this billing date
                 # Pending for later billings = min(later_billed, truck_pending)
                 pending_for_later_ppc = min(later_billed_ppc, truck_pending_ppc)
                 pending_for_later_premium = min(later_billed_premium, truck_pending_premium)
                 pending_for_later_opc = min(later_billed_opc, truck_pending_opc)
                 
-                # Pending for THIS billing = remaining pending after later billings
-                pending_ppc = min(billed_ppc, max(0, truck_pending_ppc - pending_for_later_ppc))
-                pending_premium = min(billed_premium, max(0, truck_pending_premium - pending_for_later_premium))
-                pending_opc = min(billed_opc, max(0, truck_pending_opc - pending_for_later_opc))
+                # Pending for THIS DATE = remaining pending after later billings
+                pending_for_this_date_ppc = max(0, truck_pending_ppc - pending_for_later_ppc)
+                pending_for_this_date_premium = max(0, truck_pending_premium - pending_for_later_premium)
+                pending_for_this_date_opc = max(0, truck_pending_opc - pending_for_later_opc)
+                
+                # For trucks with multiple plant_depot types, calculate this CARD's pending
+                # based on dealer_code filtering
+                if plant_depot_count > 1 and dealer_codes:
+                    # Get unloading for this card's dealer_codes
+                    placeholders = ','.join(['?' for _ in dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                          AND dealer_code IN ({placeholders})
+                    ''', (truck_number, month_start, selected_date, *dealer_codes))
+                    card_unloading = cursor.fetchone()
+                    card_unloaded_ppc = card_unloading[0] or 0
+                    card_unloaded_premium = card_unloading[1] or 0
+                    card_unloaded_opc = card_unloading[2] or 0
+                    
+                    # Card's pending = card's billing - card's unloading
+                    pending_ppc = max(0, billed_ppc - card_unloaded_ppc)
+                    pending_premium = max(0, billed_premium - card_unloaded_premium)
+                    pending_opc = max(0, billed_opc - card_unloaded_opc)
+                else:
+                    # Single plant_depot - use global FIFO
+                    pending_ppc = min(billed_ppc, pending_for_this_date_ppc)
+                    pending_premium = min(billed_premium, pending_for_this_date_premium)
+                    pending_opc = min(billed_opc, pending_for_this_date_opc)
+                
                 pending_total = pending_ppc + pending_premium + pending_opc
                 this_unloaded_ppc = billed_ppc - pending_ppc
                 this_unloaded_premium = billed_premium - pending_premium
