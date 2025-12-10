@@ -3439,20 +3439,46 @@ def get_consolidated_vehicles():
                 unloaded_before_premium = min(billed_premium, available_before_premium)
                 unloaded_before_opc = min(billed_opc, available_before_opc)
                 
+                # Check if this TRUCK had any pending material at the start of selected date
+                # (before any unloading on selected date)
+                # Use ALL billing for this truck (not filtered by plant_depot)
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                all_billing = cursor.fetchone()
+                all_billed_ppc = (all_billing[0] or 0) + opening_ppc
+                all_billed_premium = (all_billing[1] or 0) + opening_premium
+                all_billed_opc = (all_billing[2] or 0) + opening_opc
+                
+                truck_pending_before_today_ppc = max(0, all_billed_ppc - unloaded_before_today_ppc)
+                truck_pending_before_today_premium = max(0, all_billed_premium - unloaded_before_today_premium)
+                truck_pending_before_today_opc = max(0, all_billed_opc - unloaded_before_today_opc)
+                
+                truck_had_pending_before_today = (
+                    truck_pending_before_today_ppc > 0.01 or
+                    truck_pending_before_today_premium > 0.01 or
+                    truck_pending_before_today_opc > 0.01
+                )
+                
                 # Check if there's any unloading on selected date for this truck
                 cursor.execute('''
                     SELECT COUNT(*) FROM vehicle_unloading 
                     WHERE truck_number = ? AND unloading_date = ?
                 ''', (truck_number, selected_date))
-                has_unloading_today = cursor.fetchone()[0] > 0
+                has_unloading_on_selected_date = cursor.fetchone()[0] > 0
                 
-                # If billing was fully unloaded before selected date AND no unloading today, skip this card
+                # Skip if:
+                # 1. This billing was fully unloaded before selected date, AND
+                # 2. The truck had no pending material at start of selected date, AND
+                # 3. No unloading on selected date
                 was_fully_unloaded_before = (
                     unloaded_before_ppc >= billed_ppc - 0.01 and
                     unloaded_before_premium >= billed_premium - 0.01 and
                     unloaded_before_opc >= billed_opc - 0.01
                 )
-                if was_fully_unloaded_before and not has_unloading_today:
+                if was_fully_unloaded_before and not truck_had_pending_before_today and not has_unloading_on_selected_date:
                     continue
                 
                 
