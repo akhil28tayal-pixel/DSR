@@ -2845,7 +2845,7 @@ def get_consolidated_vehicles():
                     'total_value': 0,
                     'billing_date': selected_date,
                     'unloading_details': [],  # Will be filtered later
-                    'other_billing': other_billing_map.get(truck_number, []) if plant_depot == 'DEPOT' else []
+                    'other_billing': other_billing_map.get(truck_number, [])
                 }
             
             # Add invoice to this card's list
