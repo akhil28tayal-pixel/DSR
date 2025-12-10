@@ -3563,30 +3563,18 @@ def get_consolidated_vehicles():
                 # Show if there's pending material OR unloading on selected date for this billing
                 if has_pending_material or has_unloading_for_this_billing:
                     # For previous day vehicles, ONLY show unloading on the selected date
+                    # Show ALL unloading for the truck (not filtered by dealer_codes)
+                    # because unloading may be recorded for dealers not in billing
                     prev_unloading = []
                     
-                    # Get unloading records for this truck on selected_date only
-                    # Filter by dealer_code if there are multiple plant_depot for this truck
-                    if plant_depot_count > 1 and dealer_codes:
-                        placeholders = ','.join(['?' for _ in dealer_codes])
-                        cursor.execute(f'''
-                            SELECT id, truck_number, unloading_dealer, unloading_point, 
-                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                                   notes, dealer_code, is_other_dealer, unloading_date
-                            FROM vehicle_unloading 
-                            WHERE truck_number = ? AND unloading_date = ?
-                              AND dealer_code IN ({placeholders})
-                            ORDER BY unloading_date
-                        ''', (truck_number, selected_date, *dealer_codes))
-                    else:
-                        cursor.execute('''
-                            SELECT id, truck_number, unloading_dealer, unloading_point, 
-                                   ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                                   notes, dealer_code, is_other_dealer, unloading_date
-                            FROM vehicle_unloading 
-                            WHERE truck_number = ? AND unloading_date = ?
-                            ORDER BY unloading_date
-                        ''', (truck_number, selected_date))
+                    cursor.execute('''
+                        SELECT id, truck_number, unloading_dealer, unloading_point, 
+                               ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
+                               notes, dealer_code, is_other_dealer, unloading_date
+                        FROM vehicle_unloading 
+                        WHERE truck_number = ? AND unloading_date = ?
+                        ORDER BY unloading_date
+                    ''', (truck_number, selected_date))
                     
                     # Cap unloading at billed amount (FIFO)
                     remaining_to_show_ppc = billed_ppc
