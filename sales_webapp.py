@@ -2590,6 +2590,10 @@ def get_consolidated_vehicles():
                 
                 # Only add if there's pending material
                 if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
+                    # Cap negative values at 0
+                    closing_ppc = max(0, closing_ppc)
+                    closing_premium = max(0, closing_premium)
+                    closing_opc = max(0, closing_opc)
                     opening_balance_map[truck] = {
                         'billing_date': 'Previous Month',
                         'dealer_code': row[2],
@@ -2655,6 +2659,10 @@ def get_consolidated_vehicles():
                 
                 # Only add if there's pending material
                 if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
+                    # Cap negative values at 0
+                    closing_ppc = max(0, closing_ppc)
+                    closing_premium = max(0, closing_premium)
+                    closing_opc = max(0, closing_opc)
                     opening_balance_map[truck] = {
                         'billing_date': 'Previous Month',
                         'dealer_code': dealer_code,
@@ -2986,8 +2994,9 @@ def get_consolidated_vehicles():
             global_pending_opc = max(0, global_billed_opc - global_unloaded_opc)
             
             # For trucks with multiple plant_depot types, calculate card pending based on dealer_code
-            # But only if there's global pending (otherwise all cards show 0)
-            if plant_depot_count > 1 and card_dealer_codes and global_pending_ppc + global_pending_premium + global_pending_opc > 0.01:
+            # But only if there's global pending AND no opening balance (otherwise use global FIFO)
+            has_opening = (opening_ppc > 0 or opening_premium > 0 or opening_opc > 0)
+            if plant_depot_count > 1 and card_dealer_codes and not has_opening and global_pending_ppc + global_pending_premium + global_pending_opc > 0.01:
                 # Get unloading for this card's dealer_codes
                 placeholders = ','.join(['?' for _ in card_dealer_codes])
                 cursor.execute(f'''
