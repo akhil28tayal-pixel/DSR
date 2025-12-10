@@ -2950,16 +2950,25 @@ def get_consolidated_vehicles():
             # Get dealer_codes for this card
             card_dealer_codes = set(truck_data.get('dealer_codes', []))
             
-            # First calculate global totals
+            # First calculate global totals (including other_dealers_billing)
             cursor.execute('''
                 SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
                 FROM sales_data
                 WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
             ''', (truck_number, month_start, selected_date))
             total_billing = cursor.fetchone()
-            global_billed_ppc = (total_billing[0] or 0) + opening_ppc
-            global_billed_premium = (total_billing[1] or 0) + opening_premium
-            global_billed_opc = (total_billing[2] or 0) + opening_opc
+            
+            # Also get other_dealers_billing
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                FROM other_dealers_billing
+                WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+            ''', (truck_number, month_start, selected_date))
+            other_billing = cursor.fetchone()
+            
+            global_billed_ppc = (total_billing[0] or 0) + (other_billing[0] or 0) + opening_ppc
+            global_billed_premium = (total_billing[1] or 0) + (other_billing[1] or 0) + opening_premium
+            global_billed_opc = (total_billing[2] or 0) + (other_billing[2] or 0) + opening_opc
             
             cursor.execute('''
                 SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
@@ -3434,15 +3443,25 @@ def get_consolidated_vehicles():
                 opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
                 opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
                 
+                # Get billing from sales_data BEFORE this billing date
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM sales_data
                     WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                 ''', (truck_number, month_start, billing_date))
                 earlier_billing = cursor.fetchone()
-                earlier_billed_ppc = (earlier_billing[0] or 0) + opening_ppc
-                earlier_billed_premium = (earlier_billing[1] or 0) + opening_premium
-                earlier_billed_opc = (earlier_billing[2] or 0) + opening_opc
+                
+                # Also get other_dealers_billing BEFORE this date
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM other_dealers_billing
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                ''', (truck_number, month_start, billing_date))
+                earlier_other = cursor.fetchone()
+                
+                earlier_billed_ppc = (earlier_billing[0] or 0) + (earlier_other[0] or 0) + opening_ppc
+                earlier_billed_premium = (earlier_billing[1] or 0) + (earlier_other[1] or 0) + opening_premium
+                earlier_billed_opc = (earlier_billing[2] or 0) + (earlier_other[2] or 0) + opening_opc
                 
                 # Get total unloading from month_start to selected_date
                 # Use ALL unloading (not filtered by dealer_code) for correct FIFO calculation
@@ -3463,9 +3482,18 @@ def get_consolidated_vehicles():
                     WHERE truck_number = ? AND sale_date = ?
                 ''', (truck_number, billing_date))
                 this_date_billing = cursor.fetchone()
-                this_date_billed_ppc = this_date_billing[0] or 0
-                this_date_billed_premium = this_date_billing[1] or 0
-                this_date_billed_opc = this_date_billing[2] or 0
+                
+                # Also get other_dealers_billing ON this date
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM other_dealers_billing
+                    WHERE truck_number = ? AND sale_date = ?
+                ''', (truck_number, billing_date))
+                this_date_other = cursor.fetchone()
+                
+                this_date_billed_ppc = (this_date_billing[0] or 0) + (this_date_other[0] or 0)
+                this_date_billed_premium = (this_date_billing[1] or 0) + (this_date_other[1] or 0)
+                this_date_billed_opc = (this_date_billing[2] or 0) + (this_date_other[2] or 0)
                 
                 # Get billing AFTER this billing date (up to and including selected_date)
                 # Use ALL billing (not filtered by dealer_code) for correct FIFO calculation
@@ -3475,9 +3503,18 @@ def get_consolidated_vehicles():
                     WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
                 ''', (truck_number, billing_date, selected_date))
                 later_billing = cursor.fetchone()
-                later_billed_ppc = later_billing[0] or 0
-                later_billed_premium = later_billing[1] or 0
-                later_billed_opc = later_billing[2] or 0
+                
+                # Also get other_dealers_billing AFTER this date
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                    FROM other_dealers_billing
+                    WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
+                ''', (truck_number, billing_date, selected_date))
+                later_other = cursor.fetchone()
+                
+                later_billed_ppc = (later_billing[0] or 0) + (later_other[0] or 0)
+                later_billed_premium = (later_billing[1] or 0) + (later_other[1] or 0)
+                later_billed_opc = (later_billing[2] or 0) + (later_other[2] or 0)
                 
                 # Total billing for this truck = earlier (includes opening) + this date (ALL) + later
                 total_billed_ppc = earlier_billed_ppc + this_date_billed_ppc + later_billed_ppc
