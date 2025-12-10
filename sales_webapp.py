@@ -108,6 +108,7 @@ def process_new_sales_format(df):
         cursor = db.conn.cursor()
         
         successful_invoices = 0
+        duplicate_invoices = 0
         error_rows = []
         
         # Group by invoice to aggregate product line items
@@ -115,6 +116,12 @@ def process_new_sales_format(df):
         
         for invoice_number, invoice_df in invoice_groups:
             try:
+                # Check if invoice already exists (duplicate check)
+                cursor.execute('SELECT id FROM sales_data WHERE invoice_number = ?', (int(invoice_number),))
+                if cursor.fetchone():
+                    duplicate_invoices += 1
+                    continue
+                
                 # Get common invoice data from first row
                 first_row = invoice_df.iloc[0]
                 
@@ -158,7 +165,7 @@ def process_new_sales_format(df):
                 
                 # Insert aggregated invoice data
                 cursor.execute('''
-                    INSERT OR REPLACE INTO sales_data 
+                    INSERT INTO sales_data 
                     (sale_date, dealer_code, dealer_name, invoice_number, 
                      ppc_quantity, premium_quantity, opc_quantity, total_quantity, 
                      ppc_purchase_value, premium_purchase_value, opc_purchase_value, total_purchase_value, 
@@ -177,11 +184,13 @@ def process_new_sales_format(df):
         db.conn.commit()
         db.close()
         
-        if successful_invoices > 0:
-            message = f"Successfully uploaded {successful_invoices} invoices from {len(df)} product line items"
+        if successful_invoices > 0 or duplicate_invoices > 0:
+            message = f"Successfully uploaded {successful_invoices} invoices"
+            if duplicate_invoices > 0:
+                message += f", {duplicate_invoices} duplicates skipped"
             if error_rows:
-                message += f". {len(error_rows)} invoices had errors."
-            return jsonify({'success': True, 'message': message, 'errors': error_rows})
+                message += f", {len(error_rows)} errors"
+            return jsonify({'success': True, 'message': message, 'errors': error_rows, 'duplicates': duplicate_invoices})
         else:
             detailed_message = f'No valid invoices found. All {len(invoice_groups)} invoices failed to process.'
             if error_rows:
@@ -221,6 +230,7 @@ def upload_sales():
                 cursor = db.conn.cursor()
                 
                 successful_rows = 0
+                duplicate_rows = 0
                 error_rows = []
                 
                 for index, row in df.iterrows():
@@ -255,6 +265,13 @@ def upload_sales():
                         else:
                             invoice_number = int(invoice_number)
                         
+                        # Check for duplicate invoice
+                        if invoice_number:
+                            cursor.execute('SELECT id FROM sales_data WHERE invoice_number = ?', (invoice_number,))
+                            if cursor.fetchone():
+                                duplicate_rows += 1
+                                continue
+                        
                         # Material quantities
                         ppc_quantity = float(row.get('PPC Quantity', row.get('ppc_quantity', 0)))
                         premium_quantity = float(row.get('Premium Quantity', row.get('premium_quantity', 0)))
@@ -272,9 +289,9 @@ def upload_sales():
                         if not plant_depot or plant_depot.lower() in ['nan', 'none', '']:
                             plant_depot = None
                         
-                        # Insert or update sales data with truck number
+                        # Insert sales data
                         cursor.execute('''
-                            INSERT OR REPLACE INTO sales_data 
+                            INSERT INTO sales_data 
                             (sale_date, dealer_code, dealer_name, invoice_number, 
                              ppc_quantity, premium_quantity, opc_quantity, total_quantity, 
                              ppc_purchase_value, premium_purchase_value, opc_purchase_value, total_purchase_value, 
@@ -292,11 +309,13 @@ def upload_sales():
                 
                 db.conn.commit()
                 
-                if successful_rows > 0:
+                if successful_rows > 0 or duplicate_rows > 0:
                     message = f"Successfully uploaded {successful_rows} sales records"
+                    if duplicate_rows > 0:
+                        message += f", {duplicate_rows} duplicates skipped"
                     if error_rows:
-                        message += f". {len(error_rows)} rows had errors."
-                    return jsonify({'success': True, 'message': message, 'errors': error_rows})
+                        message += f", {len(error_rows)} errors"
+                    return jsonify({'success': True, 'message': message, 'errors': error_rows, 'duplicates': duplicate_rows})
                 else:
                     detailed_message = f'No valid data found in file. All {len(df)} rows failed to process.'
                     if error_rows:
@@ -337,6 +356,7 @@ def upload_collections():
                 cursor = db.conn.cursor()
                 
                 successful_rows = 0
+                duplicate_rows = 0
                 error_rows = []
                 
                 for index, row in df.iterrows():
@@ -364,6 +384,15 @@ def upload_collections():
                         payment_reference = row.get('Payment Reference', row.get('payment_reference', ''))
                         payment_reference = str(payment_reference).strip() if pd.notna(payment_reference) else ''
                         
+                        # Check for duplicate collection (same date, dealer, amount, and payment_reference)
+                        cursor.execute('''
+                            SELECT id FROM collections_data 
+                            WHERE posting_date = ? AND dealer_code = ? AND amount = ? AND payment_reference = ?
+                        ''', (posting_date, dealer_code, amount, payment_reference))
+                        if cursor.fetchone():
+                            duplicate_rows += 1
+                            continue
+                        
                         # Insert collections data
                         cursor.execute('''
                             INSERT INTO collections_data 
@@ -378,11 +407,13 @@ def upload_collections():
                 
                 db.conn.commit()
                 
-                if successful_rows > 0:
+                if successful_rows > 0 or duplicate_rows > 0:
                     message = f"Successfully uploaded {successful_rows} collections records"
+                    if duplicate_rows > 0:
+                        message += f", {duplicate_rows} duplicates skipped"
                     if error_rows:
-                        message += f". {len(error_rows)} rows had errors."
-                    return jsonify({'success': True, 'message': message, 'errors': error_rows})
+                        message += f", {len(error_rows)} errors"
+                    return jsonify({'success': True, 'message': message, 'errors': error_rows, 'duplicates': duplicate_rows})
                 else:
                     return jsonify({'success': False, 'message': 'No valid data found in file', 'errors': error_rows})
                     
