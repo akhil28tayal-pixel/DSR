@@ -4695,16 +4695,66 @@ def upload_dealer_statement():
                                 break
             
             # Get existing values from database for comparison
+            # Use the same logic as financial balance page to get opening balance
+            from dateutil.relativedelta import relativedelta
+            
             db = SalesCollectionsDatabase(DB_PATH)
             cursor = db.conn.cursor()
             
-            # Get existing opening balance
-            cursor.execute('''
-                SELECT opening_balance FROM opening_balances
-                WHERE dealer_code = ? AND month_year = ?
-            ''', (dealer_code, month_year))
-            existing_opening = cursor.fetchone()
-            existing_opening_balance = existing_opening[0] if existing_opening else 0
+            # Calculate opening balance the same way as financial balance page
+            month_start = month_year + '-01'
+            year, month = map(int, month_year.split('-'))
+            if month == 12:
+                next_month_start = f'{year + 1}-01-01'
+            else:
+                next_month_start = f'{year}-{month + 1:02d}-01'
+            
+            current_month_dt = datetime.strptime(month_year + '-01', '%Y-%m-%d')
+            prev_month_dt = current_month_dt - relativedelta(months=1)
+            prev_month_year = prev_month_dt.strftime('%Y-%m')
+            prev_month_start = prev_month_year + '-01'
+            
+            # Check if manual opening balance exists for this month
+            cursor.execute('SELECT opening_balance FROM opening_balances WHERE dealer_code = ? AND month_year = ?', 
+                          (dealer_code, month_year))
+            manual_opening = cursor.fetchone()
+            
+            if manual_opening:
+                existing_opening_balance = manual_opening[0] or 0
+            else:
+                # Auto-calculate from previous month's closing
+                # Previous month opening
+                cursor.execute('SELECT opening_balance FROM opening_balances WHERE dealer_code = ? AND month_year = ?',
+                              (dealer_code, prev_month_year))
+                prev_opening_row = cursor.fetchone()
+                prev_opening = prev_opening_row[0] if prev_opening_row else 0
+                
+                # Previous month sales
+                cursor.execute('SELECT SUM(total_purchase_value) FROM sales_data WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?',
+                              (dealer_code, prev_month_start, month_start))
+                prev_sales_row = cursor.fetchone()
+                prev_sales = prev_sales_row[0] if prev_sales_row and prev_sales_row[0] else 0
+                
+                # Previous month collections
+                cursor.execute('SELECT SUM(amount) FROM collections_data WHERE dealer_code = ? AND posting_date >= ? AND posting_date < ?',
+                              (dealer_code, prev_month_start, month_start))
+                prev_coll_row = cursor.fetchone()
+                prev_collections = prev_coll_row[0] if prev_coll_row and prev_coll_row[0] else 0
+                
+                # Previous month credit notes
+                cursor.execute('SELECT SUM(credit_discount) FROM credit_discounts WHERE dealer_code = ? AND month_year = ?',
+                              (dealer_code, prev_month_year))
+                prev_credit_row = cursor.fetchone()
+                prev_credits = prev_credit_row[0] if prev_credit_row and prev_credit_row[0] else 0
+                
+                # Previous month debit notes
+                cursor.execute('SELECT SUM(debit_amount) FROM debit_notes WHERE dealer_code = ? AND month_year = ?',
+                              (dealer_code, prev_month_year))
+                prev_debit_row = cursor.fetchone()
+                prev_debits = prev_debit_row[0] if prev_debit_row and prev_debit_row[0] else 0
+                
+                # Opening = prev_opening + prev_sales - prev_collections - prev_credits + prev_debits
+                existing_opening_balance = round(prev_opening + prev_sales - prev_collections - prev_credits + prev_debits, 2)
             
             # Get existing credit note
             cursor.execute('''
