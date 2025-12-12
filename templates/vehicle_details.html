@@ -663,6 +663,7 @@
         let dealersList = [];
         let allVehicles = [];  // Store all vehicles for filtering
         let currentDate = '';  // Store current date for filtering
+        let vehicleDataMap = {};  // Store vehicle data by truck number for auto-fill
         
         // Load dealers for dropdown
         async function loadDealers() {
@@ -730,6 +731,14 @@
                     // Store vehicles globally and sort (pending first, complete last)
                     allVehicles = sortVehicles(data.vehicles);
                     currentDate = date;
+                    
+                    // Build vehicle data map for auto-fill feature
+                    vehicleDataMap = {};
+                    allVehicles.forEach(v => {
+                        const truckNum = v.display_truck_number || v.truck_number;
+                        vehicleDataMap[truckNum] = v;
+                    });
+                    
                     document.getElementById('vehicleSearch').value = '';  // Clear search
                     displayVehicles(allVehicles, date);
                     document.getElementById('vehicleCount').textContent = `${data.vehicles.length} Vehicles Found`;
@@ -1172,6 +1181,34 @@
             document.getElementById('unloadingDealer').value = '';
             document.getElementById('otherDealerName').value = '';
             document.getElementById('unloadingPoint').value = '';
+            
+            // Auto-fill dealer for DEPOT-billed vehicles
+            const vehicleData = vehicleDataMap[truckNumber];
+            if (vehicleData && vehicleData.invoices && vehicleData.invoices.length > 0) {
+                // Check if all invoices are from DEPOT (not PLANT)
+                const isDepotOnly = vehicleData.invoices.every(inv => 
+                    inv.plant_depot && inv.plant_depot.toUpperCase().includes('DEPOT')
+                );
+                
+                if (isDepotOnly) {
+                    // Get the first dealer from invoices (usually same dealer for depot billing)
+                    const firstInvoice = vehicleData.invoices[0];
+                    const dealerCode = firstInvoice.dealer_code;
+                    const dealerName = firstInvoice.dealer_name;
+                    
+                    // Try to find and select this dealer in the dropdown
+                    const dealerSelect = document.getElementById('unloadingDealer');
+                    const dealerValue = `${dealerCode}_${dealerName}`;
+                    
+                    // Check if dealer exists in dropdown
+                    for (let option of dealerSelect.options) {
+                        if (option.value === dealerValue) {
+                            dealerSelect.value = dealerValue;
+                            break;
+                        }
+                    }
+                }
+            }
             document.getElementById('ppcUnloaded').value = currentRemainingPpc;
             document.getElementById('premiumUnloaded').value = currentRemainingPremium;
             document.getElementById('opcUnloaded').value = currentRemainingOpc;
