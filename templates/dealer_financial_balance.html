@@ -222,11 +222,17 @@
                             <span class="spinner-border spinner-border-sm ms-2" role="status"></span>
                         </button>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-2">
                         <label class="form-label fw-bold">&nbsp;</label>
                         <button class="btn btn-success w-100" onclick="saveAllData()">
-                            <i class="bi bi-save me-1"></i> Save All Changes
+                            <i class="bi bi-save me-1"></i> Save All
                             <span class="spinner-border spinner-border-sm ms-2" role="status"></span>
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">&nbsp;</label>
+                        <button class="btn w-100" style="background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); color: white; border: none; border-radius: 10px;" onclick="openPdfUploadModal()">
+                            <i class="bi bi-file-earmark-pdf me-1"></i> Upload PDF
                         </button>
                     </div>
                 </div>
@@ -317,16 +323,333 @@
         </div>
     </div>
 
+    <!-- PDF Upload Modal -->
+    <div class="modal fade" id="pdfUploadModal" tabindex="-1" aria-labelledby="pdfUploadModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); color: white;">
+                    <h5 class="modal-title" id="pdfUploadModalLabel">
+                        <i class="bi bi-file-earmark-pdf me-2"></i>Upload Dealer Statement
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Select Dealer</label>
+                        <select id="pdfDealerSelect" class="form-select">
+                            <option value="">-- Select Dealer --</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Upload PDF Statement</label>
+                        <input type="file" id="pdfFileInput" class="form-control" accept=".pdf">
+                        <small class="text-muted">Upload Shree Cement customer account statement PDF</small>
+                    </div>
+                    
+                    <div id="pdfUploadProgress" style="display: none;">
+                        <div class="text-center py-3">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <p class="mt-2 mb-0">Parsing PDF...</p>
+                        </div>
+                    </div>
+                    
+                    <div id="pdfParseResults" style="display: none;">
+                        <hr>
+                        <h6 class="fw-bold mb-3"><i class="bi bi-clipboard-check me-2"></i>Extracted Data</h6>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title text-muted">Period</h6>
+                                        <p class="mb-0 fw-bold" id="extractedPeriod">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title text-muted">Month</h6>
+                                        <p class="mb-0 fw-bold" id="extractedMonth">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Opening Balance -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <i class="bi bi-wallet2 me-2"></i>Opening Balance
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">PDF Value</label>
+                                        <p class="fw-bold fs-5 text-primary" id="pdfOpeningBalance">₹0</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">Database Value</label>
+                                        <p class="fw-bold fs-5" id="dbOpeningBalance">₹0</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">Status</label>
+                                        <p id="openingBalanceStatus"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Credit Notes -->
+                        <div class="card mb-3 border-success">
+                            <div class="card-header bg-success text-white">
+                                <i class="bi bi-plus-circle me-2"></i>Credit Notes (CRN)
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">PDF Total</label>
+                                        <p class="fw-bold fs-5 text-success" id="pdfCreditNotes">₹0</p>
+                                        <small class="text-muted" id="crnEntriesCount">0 entries found</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">Database Value</label>
+                                        <p class="fw-bold fs-5" id="dbCreditNotes">₹0</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check mt-4">
+                                            <input class="form-check-input" type="checkbox" id="updateCreditNotes" checked>
+                                            <label class="form-check-label" for="updateCreditNotes">
+                                                Update Credit Notes
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Debit Notes -->
+                        <div class="card mb-3 border-danger">
+                            <div class="card-header bg-danger text-white">
+                                <i class="bi bi-dash-circle me-2"></i>Debit Notes (DRN)
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">PDF Total</label>
+                                        <p class="fw-bold fs-5 text-danger" id="pdfDebitNotes">₹0</p>
+                                        <small class="text-muted" id="drnEntriesCount">0 entries found</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">Database Value</label>
+                                        <p class="fw-bold fs-5" id="dbDebitNotes">₹0</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check mt-4">
+                                            <input class="form-check-input" type="checkbox" id="updateDebitNotes" checked>
+                                            <label class="form-check-label" for="updateDebitNotes">
+                                                Update Debit Notes
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="parsePdfBtn" onclick="parsePdfStatement()">
+                        <i class="bi bi-search me-1"></i> Parse PDF
+                    </button>
+                    <button type="button" class="btn btn-success" id="savePdfDataBtn" onclick="savePdfData()" style="display: none;">
+                        <i class="bi bi-check-lg me-1"></i> Save to Database
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let dealersData = [];
+        let parsedPdfData = null;
         
         // Set default month to current month
         document.addEventListener('DOMContentLoaded', function() {
             const now = new Date();
             const monthYear = now.toISOString().slice(0, 7);
             document.getElementById('monthYear').value = monthYear;
+            loadDealersForPdf();
         });
+        
+        // Load dealers for PDF upload dropdown
+        async function loadDealersForPdf() {
+            try {
+                const response = await fetch('/get_all_dealers');
+                const data = await response.json();
+                if (data.success) {
+                    const select = document.getElementById('pdfDealerSelect');
+                    select.innerHTML = '<option value="">-- Select Dealer --</option>';
+                    data.dealers.forEach(dealer => {
+                        const option = document.createElement('option');
+                        option.value = `${dealer.dealer_code}_${dealer.dealer_name}`;
+                        option.textContent = `${dealer.dealer_name} (${dealer.dealer_code})`;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading dealers:', error);
+            }
+        }
+        
+        function openPdfUploadModal() {
+            // Reset form
+            document.getElementById('pdfDealerSelect').value = '';
+            document.getElementById('pdfFileInput').value = '';
+            document.getElementById('pdfParseResults').style.display = 'none';
+            document.getElementById('pdfUploadProgress').style.display = 'none';
+            document.getElementById('savePdfDataBtn').style.display = 'none';
+            document.getElementById('parsePdfBtn').style.display = 'inline-block';
+            parsedPdfData = null;
+            
+            const modal = new bootstrap.Modal(document.getElementById('pdfUploadModal'));
+            modal.show();
+        }
+        
+        async function parsePdfStatement() {
+            const dealerSelect = document.getElementById('pdfDealerSelect');
+            const fileInput = document.getElementById('pdfFileInput');
+            
+            if (!dealerSelect.value) {
+                alert('Please select a dealer');
+                return;
+            }
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Please select a PDF file');
+                return;
+            }
+            
+            const [dealerCode, ...dealerNameParts] = dealerSelect.value.split('_');
+            const dealerName = dealerNameParts.join('_');
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('dealer_code', dealerCode);
+            formData.append('dealer_name', dealerName);
+            
+            document.getElementById('pdfUploadProgress').style.display = 'block';
+            document.getElementById('pdfParseResults').style.display = 'none';
+            document.getElementById('parsePdfBtn').disabled = true;
+            
+            try {
+                const response = await fetch('/upload_dealer_statement', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                document.getElementById('pdfUploadProgress').style.display = 'none';
+                document.getElementById('parsePdfBtn').disabled = false;
+                
+                if (result.success) {
+                    parsedPdfData = result.data;
+                    displayParsedData(result.data);
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (error) {
+                document.getElementById('pdfUploadProgress').style.display = 'none';
+                document.getElementById('parsePdfBtn').disabled = false;
+                alert('Error parsing PDF: ' + error.message);
+            }
+        }
+        
+        function displayParsedData(data) {
+            document.getElementById('pdfParseResults').style.display = 'block';
+            document.getElementById('savePdfDataBtn').style.display = 'inline-block';
+            
+            // Period and Month
+            const period = data.period_start && data.period_end 
+                ? `${data.period_start} to ${data.period_end}` 
+                : 'Not found';
+            document.getElementById('extractedPeriod').textContent = period;
+            document.getElementById('extractedMonth').textContent = data.month_year || 'Not found';
+            
+            // Opening Balance
+            const pdfOpening = data.opening_balance.pdf_value;
+            const dbOpening = data.opening_balance.db_value;
+            document.getElementById('pdfOpeningBalance').textContent = `₹${pdfOpening.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('dbOpeningBalance').textContent = `₹${dbOpening.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            
+            const openingMatch = data.opening_balance.match;
+            document.getElementById('openingBalanceStatus').innerHTML = openingMatch 
+                ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Match</span>'
+                : '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Mismatch</span>';
+            
+            // Credit Notes
+            const pdfCrn = data.credit_notes.pdf_value;
+            const dbCrn = data.credit_notes.db_value;
+            document.getElementById('pdfCreditNotes').textContent = `₹${pdfCrn.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('dbCreditNotes').textContent = `₹${dbCrn.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('crnEntriesCount').textContent = `${data.credit_notes.entries_count} entries found`;
+            
+            // Debit Notes
+            const pdfDrn = data.debit_notes.pdf_value;
+            const dbDrn = data.debit_notes.db_value;
+            document.getElementById('pdfDebitNotes').textContent = `₹${pdfDrn.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('dbDebitNotes').textContent = `₹${dbDrn.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('drnEntriesCount').textContent = `${data.debit_notes.entries_count} entries found`;
+        }
+        
+        async function savePdfData() {
+            if (!parsedPdfData) {
+                alert('No parsed data to save');
+                return;
+            }
+            
+            const updateCrn = document.getElementById('updateCreditNotes').checked;
+            const updateDrn = document.getElementById('updateDebitNotes').checked;
+            
+            if (!updateCrn && !updateDrn) {
+                alert('Please select at least one item to update');
+                return;
+            }
+            
+            const saveData = {
+                dealer_code: parsedPdfData.dealer_code,
+                dealer_name: parsedPdfData.dealer_name,
+                month_year: parsedPdfData.month_year,
+                credit_note: updateCrn ? parsedPdfData.credit_notes.pdf_value : 0,
+                debit_note: updateDrn ? parsedPdfData.debit_notes.pdf_value : 0
+            };
+            
+            try {
+                const response = await fetch('/save_statement_data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(saveData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Data saved successfully!');
+                    // Close modal
+                    bootstrap.Modal.getInstance(document.getElementById('pdfUploadModal')).hide();
+                    // Refresh data if loaded
+                    if (dealersData.length > 0) {
+                        loadData();
+                    }
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (error) {
+                alert('Error saving data: ' + error.message);
+            }
+        }
         
         function formatCurrency(amount) {
             return '₹' + parseFloat(amount || 0).toLocaleString('en-IN', {
