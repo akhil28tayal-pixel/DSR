@@ -27,7 +27,7 @@ DB_PATH = os.path.join(BASE_DIR, "webapp_sales_collections.db")
 
 # Configure upload settings - use relative path
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
@@ -4593,6 +4593,227 @@ def save_dealer_financial_balance():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/upload_dealer_statement', methods=['POST'])
+def upload_dealer_statement():
+    """Upload and parse dealer PDF statement to extract CRN/DRN values"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file uploaded'})
+        
+        file = request.files['file']
+        dealer_code = request.form.get('dealer_code')
+        dealer_name = request.form.get('dealer_name')
+        
+        if not dealer_code:
+            return jsonify({'success': False, 'message': 'Dealer code is required'})
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'})
+        
+        if not file.filename.lower().endswith('.pdf'):
+            return jsonify({'success': False, 'message': 'Only PDF files are allowed'})
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        try:
+            # Parse PDF
+            import PyPDF2
+            import re
+            
+            pdf = PyPDF2.PdfReader(open(filepath, 'rb'))
+            full_text = '\n'.join([page.extract_text() for page in pdf.pages])
+            
+            # Extract opening balance
+            opening_match = re.search(r'Opening Balance\(s\):\s*([\d,]+\.\d{2})\s*\(?(DR|CR)?\)?', full_text)
+            opening_balance = 0
+            if opening_match:
+                opening_balance = float(opening_match.group(1).replace(',', ''))
+                if opening_match.group(2) == 'CR':
+                    opening_balance = -opening_balance
+            
+            # Extract period dates
+            period_match = re.search(r'PERIOD:\s*(\d{2}\.\d{2}\.\d{4})\s*To\s*(\d{2}\.\d{2}\.\d{4})', full_text)
+            period_start = None
+            period_end = None
+            month_year = None
+            if period_match:
+                period_start = period_match.group(1)
+                period_end = period_match.group(2)
+                # Extract month_year from period_end (format: DD.MM.YYYY)
+                parts = period_end.split('.')
+                if len(parts) == 3:
+                    month_year = f"{parts[2]}-{parts[1]}"  # YYYY-MM format
+            
+            if not month_year:
+                # Default to current month
+                month_year = datetime.now().strftime('%Y-%m')
+            
+            # Extract CRN (Credit Note) entries
+            total_crn = 0
+            crn_entries = []
+            
+            # Pattern for CRN entries with amounts in Credit column
+            # CRN entries have amounts that reduce the balance (credits)
+            lines = full_text.split('\n')
+            for i, line in enumerate(lines):
+                # Skip header lines containing 'INV/CRN'
+                if 'CRN' in line and 'INV/CRN' not in line:
+                    # Get context around the line (CRN info spans multiple lines)
+                    context = ' '.join(lines[max(0,i-1):min(len(lines),i+6)])
+                    
+                    # Look for amount pairs - credit amount followed by running balance
+                    amounts = re.findall(r'(\d+\.\d{2})\s+(\d+\.\d{2})', context)
+                    
+                    if amounts:
+                        # Find the credit amount (typically between 100 and 500000)
+                        for amt_pair in amounts:
+                            amt = float(amt_pair[0])
+                            # Filter reasonable CRN amounts
+                            if 100 < amt < 500000:
+                                total_crn += amt
+                                crn_entries.append({'line': line[:100], 'amount': amt})
+                                break
+            
+            # Extract DRN (Debit Note) entries
+            total_drn = 0
+            drn_entries = []
+            
+            for i, line in enumerate(lines):
+                if 'DRN' in line or 'DEBIT NOTE' in line.upper():
+                    # Look for amount pattern
+                    amounts = re.findall(r'(\d+\.\d{2})', line)
+                    if amounts:
+                        for amt_str in amounts:
+                            amt = float(amt_str)
+                            if amt > 100 and amt < 10000000:
+                                total_drn += amt
+                                drn_entries.append({'line': line[:100], 'amount': amt})
+                                break
+            
+            # Get existing values from database for comparison
+            db = SalesCollectionsDatabase(DB_PATH)
+            cursor = db.conn.cursor()
+            
+            # Get existing opening balance
+            cursor.execute('''
+                SELECT opening_balance FROM opening_balances
+                WHERE dealer_code = ? AND month_year = ?
+            ''', (dealer_code, month_year))
+            existing_opening = cursor.fetchone()
+            existing_opening_balance = existing_opening[0] if existing_opening else 0
+            
+            # Get existing credit note
+            cursor.execute('''
+                SELECT credit_discount FROM credit_discounts
+                WHERE dealer_code = ? AND month_year = ?
+            ''', (dealer_code, month_year))
+            existing_crn = cursor.fetchone()
+            existing_crn_value = existing_crn[0] if existing_crn else 0
+            
+            # Get existing debit note
+            cursor.execute('''
+                SELECT debit_amount FROM debit_notes
+                WHERE dealer_code = ? AND month_year = ?
+            ''', (dealer_code, month_year))
+            existing_drn = cursor.fetchone()
+            existing_drn_value = existing_drn[0] if existing_drn else 0
+            
+            db.close()
+            
+            # Clean up temp file
+            os.remove(filepath)
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'dealer_code': dealer_code,
+                    'dealer_name': dealer_name,
+                    'month_year': month_year,
+                    'period_start': period_start,
+                    'period_end': period_end,
+                    'opening_balance': {
+                        'pdf_value': opening_balance,
+                        'db_value': existing_opening_balance,
+                        'match': abs(opening_balance - existing_opening_balance) < 1
+                    },
+                    'credit_notes': {
+                        'pdf_value': total_crn,
+                        'db_value': existing_crn_value,
+                        'entries_count': len(crn_entries)
+                    },
+                    'debit_notes': {
+                        'pdf_value': total_drn,
+                        'db_value': existing_drn_value,
+                        'entries_count': len(drn_entries)
+                    }
+                }
+            })
+            
+        except Exception as e:
+            # Clean up temp file on error
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'success': False, 'message': f'Error parsing PDF: {str(e)}'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/save_statement_data', methods=['POST'])
+def save_statement_data():
+    """Save extracted statement data (CRN/DRN) to database"""
+    try:
+        data = request.get_json()
+        dealer_code = data.get('dealer_code')
+        dealer_name = data.get('dealer_name')
+        month_year = data.get('month_year')
+        credit_note = data.get('credit_note', 0)
+        debit_note = data.get('debit_note', 0)
+        opening_balance = data.get('opening_balance')
+        
+        if not dealer_code or not month_year:
+            return jsonify({'success': False, 'message': 'Dealer code and month_year are required'})
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        # Update credit note if provided
+        if credit_note > 0:
+            cursor.execute('''
+                INSERT INTO credit_discounts (dealer_code, dealer_name, credit_discount, month_year, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(dealer_code, month_year) 
+                DO UPDATE SET credit_discount = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, credit_note, month_year, credit_note, dealer_name))
+        
+        # Update debit note if provided
+        if debit_note > 0:
+            cursor.execute('''
+                INSERT INTO debit_notes (dealer_code, dealer_name, debit_amount, month_year, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(dealer_code, month_year) 
+                DO UPDATE SET debit_amount = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, debit_note, month_year, debit_note, dealer_name))
+        
+        # Update opening balance if provided
+        if opening_balance is not None:
+            cursor.execute('''
+                INSERT INTO opening_balances (dealer_code, dealer_name, opening_balance, month_year, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(dealer_code, month_year) 
+                DO UPDATE SET opening_balance = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, opening_balance, month_year, opening_balance, dealer_name))
+        
+        db.conn.commit()
+        db.close()
+        
+        return jsonify({'success': True, 'message': 'Statement data saved successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 if __name__ == '__main__':
     # Ensure upload directory exists
