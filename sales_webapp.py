@@ -2315,8 +2315,9 @@ def get_dealer_balance():
                     closing_premium = prev_opening_premium + (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
                     closing_opc = prev_opening_opc + (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
                     
-                    # Only add if there's pending material
-                    if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
+                    # Add to opening balance even if negative (to account for over-unloading)
+                    # This allows negative balances to offset against current month's billing
+                    if closing_ppc != 0 or closing_premium != 0 or closing_opc != 0:
                         opening_balance_vehicles[truck] = {
                             'ppc': closing_ppc,
                             'premium': closing_premium,
@@ -2333,9 +2334,21 @@ def get_dealer_balance():
                         unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
                         
                         # Attribute unloading to opening balance first (FIFO)
-                        opening_unloaded_ppc = min(closing_ppc, unloaded['ppc'])
-                        opening_unloaded_premium = min(closing_premium, unloaded['premium'])
-                        opening_unloaded_opc = min(closing_opc, unloaded['opc'])
+                        # For negative opening (over-unloaded), unloading goes to current month billing first
+                        if closing_ppc > 0:
+                            opening_unloaded_ppc = min(closing_ppc, unloaded['ppc'])
+                        else:
+                            opening_unloaded_ppc = 0
+                        
+                        if closing_premium > 0:
+                            opening_unloaded_premium = min(closing_premium, unloaded['premium'])
+                        else:
+                            opening_unloaded_premium = 0
+                        
+                        if closing_opc > 0:
+                            opening_unloaded_opc = min(closing_opc, unloaded['opc'])
+                        else:
+                            opening_unloaded_opc = 0
                         
                         truck_unloading_consumed[truck] = {
                             'ppc': opening_unloaded_ppc,
@@ -2384,8 +2397,8 @@ def get_dealer_balance():
                     closing_premium = (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
                     closing_opc = (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
                     
-                    # Only add if there's pending material
-                    if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
+                    # Add to opening balance even if negative (to account for over-unloading)
+                    if closing_ppc != 0 or closing_premium != 0 or closing_opc != 0:
                         opening_balance_vehicles[truck] = {
                             'ppc': closing_ppc,
                             'premium': closing_premium,
@@ -2401,9 +2414,21 @@ def get_dealer_balance():
                         # Get unloading for this truck in current month
                         unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
                         
-                        opening_unloaded_ppc = min(closing_ppc, unloaded['ppc'])
-                        opening_unloaded_premium = min(closing_premium, unloaded['premium'])
-                        opening_unloaded_opc = min(closing_opc, unloaded['opc'])
+                        # For negative opening (over-unloaded), unloading goes to current month billing first
+                        if closing_ppc > 0:
+                            opening_unloaded_ppc = min(closing_ppc, unloaded['ppc'])
+                        else:
+                            opening_unloaded_ppc = 0
+                        
+                        if closing_premium > 0:
+                            opening_unloaded_premium = min(closing_premium, unloaded['premium'])
+                        else:
+                            opening_unloaded_premium = 0
+                        
+                        if closing_opc > 0:
+                            opening_unloaded_opc = min(closing_opc, unloaded['opc'])
+                        else:
+                            opening_unloaded_opc = 0
                         
                         truck_unloading_consumed[truck] = {
                             'ppc': opening_unloaded_ppc,
