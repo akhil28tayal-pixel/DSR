@@ -1340,7 +1340,7 @@ def get_dealers_for_payment_reminder():
             
             # Get total purchases up to balance date
             cursor.execute('''
-                SELECT SUM(total_amount) FROM sales_data
+                SELECT SUM(total_purchase_value) FROM sales_data
                 WHERE dealer_code = ? AND sale_date <= ?
             ''', (dealer_code, balance_date_str))
             purchase_row = cursor.fetchone()
@@ -1453,7 +1453,7 @@ def generate_payment_reminder_message():
         
         # Get total purchases up to balance date
         cursor.execute('''
-            SELECT SUM(total_amount) FROM sales_data
+            SELECT SUM(total_purchase_value) FROM sales_data
             WHERE dealer_code = ? AND sale_date <= ?
         ''', (dealer_code, balance_date_str))
         purchase_row = cursor.fetchone()
