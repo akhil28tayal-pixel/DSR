@@ -1316,7 +1316,7 @@ def get_dealers_for_payment_reminder():
             FROM (
                 SELECT dealer_code, dealer_name FROM sales_data WHERE strftime('%Y-%m', sale_date) = ?
                 UNION
-                SELECT dealer_code, dealer_name FROM collections WHERE strftime('%Y-%m', collection_date) = ?
+                SELECT dealer_code, dealer_name FROM collections_data WHERE strftime('%Y-%m', posting_date) = ?
                 UNION
                 SELECT dealer_code, dealer_name FROM opening_balances WHERE month_year = ?
             )
@@ -1345,8 +1345,8 @@ def get_dealers_for_payment_reminder():
             
             # Get total collections up to balance date
             cursor.execute('''
-                SELECT SUM(amount) FROM collections
-                WHERE dealer_code = ? AND collection_date <= ?
+                SELECT SUM(amount) FROM collections_data
+                WHERE dealer_code = ? AND posting_date <= ?
             ''', (dealer_code, balance_date_str))
             collection_row = cursor.fetchone()
             collection = collection_row[0] if collection_row and collection_row[0] else 0
@@ -1456,8 +1456,8 @@ def generate_payment_reminder_message():
         
         # Get total collections up to balance date
         cursor.execute('''
-            SELECT SUM(amount) FROM collections
-            WHERE dealer_code = ? AND collection_date <= ?
+            SELECT SUM(amount) FROM collections_data
+            WHERE dealer_code = ? AND posting_date <= ?
         ''', (dealer_code, balance_date_str))
         collection_row = cursor.fetchone()
         collection = collection_row[0] if collection_row and collection_row[0] else 0
