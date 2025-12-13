@@ -1160,10 +1160,10 @@ def generate_unloading_whatsapp_message():
             total_qty = record[5] or 0
             
             # Convert to bags
-            ppc_bags = int(ppc * 20)
-            premium_bags = int(premium * 20)
-            opc_bags = int(opc * 20)
-            total_bags = int(total_qty * 20)
+            ppc_bags = round(ppc * 20)
+            premium_bags = round(premium * 20)
+            opc_bags = round(opc * 20)
+            total_bags = round(total_qty * 20)
             
             message_lines.append(f"🚛 Truck: *{truck_number}*")
             message_lines.append(f"   📍 Point: {unloading_point}")
@@ -1183,7 +1183,7 @@ def generate_unloading_whatsapp_message():
             message_lines.append("")
         
         # Total unloading summary
-        total_unloaded_bags = int((total_ppc_unloaded + total_premium_unloaded + total_opc_unloaded) * 20)
+        total_unloaded_bags = round((total_ppc_unloaded + total_premium_unloaded + total_opc_unloaded) * 20)
         message_lines.append(f"*Total Unloaded: {total_unloaded_bags} bags*")
         message_lines.append("")
         
@@ -1193,9 +1193,9 @@ def generate_unloading_whatsapp_message():
         message_lines.append("")
         
         # Opening balance (in bags) - show even if negative
-        opening_ppc_bags = int(opening['ppc'] * 20)
-        opening_premium_bags = int(opening['premium'] * 20)
-        opening_opc_bags = int(opening['opc'] * 20)
+        opening_ppc_bags = round(opening['ppc'] * 20)
+        opening_premium_bags = round(opening['premium'] * 20)
+        opening_opc_bags = round(opening['opc'] * 20)
         
         message_lines.append("*Opening Balance:*")
         balance_parts = []
@@ -1214,9 +1214,9 @@ def generate_unloading_whatsapp_message():
         message_lines.append("")
         
         # Today's billing (in bags) - show total only in material balance
-        billed_ppc_bags = int(total_ppc_billed * 20)
-        billed_premium_bags = int(total_premium_billed * 20)
-        billed_opc_bags = int(total_opc_billed * 20)
+        billed_ppc_bags = round(total_ppc_billed * 20)
+        billed_premium_bags = round(total_premium_billed * 20)
+        billed_opc_bags = round(total_opc_billed * 20)
         
         message_lines.append("*Today's Billing (+):*")
         billing_parts = []
@@ -1235,9 +1235,9 @@ def generate_unloading_whatsapp_message():
         message_lines.append("")
         
         # Today's unloading (in bags)
-        unloaded_ppc_bags = int(total_ppc_unloaded * 20)
-        unloaded_premium_bags = int(total_premium_unloaded * 20)
-        unloaded_opc_bags = int(total_opc_unloaded * 20)
+        unloaded_ppc_bags = round(total_ppc_unloaded * 20)
+        unloaded_premium_bags = round(total_premium_unloaded * 20)
+        unloaded_opc_bags = round(total_opc_unloaded * 20)
         
         message_lines.append("*Today's Unloading (-):*")
         unloading_parts = []
@@ -1254,9 +1254,9 @@ def generate_unloading_whatsapp_message():
         message_lines.append("")
         
         # Closing balance (in bags)
-        closing_ppc_bags = int(closing_ppc * 20)
-        closing_premium_bags = int(closing_premium * 20)
-        closing_opc_bags = int(closing_opc * 20)
+        closing_ppc_bags = round(closing_ppc * 20)
+        closing_premium_bags = round(closing_premium * 20)
+        closing_opc_bags = round(closing_opc * 20)
         
         message_lines.append("*Closing Balance:*")
         closing_parts = []
