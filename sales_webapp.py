@@ -4638,8 +4638,10 @@ def upload_dealer_statement():
 
                 amount_re = re.compile(r'^\d{1,3}(?:,\d{3})*\.\d{2}$|^\d+\.\d{2}$')
                 date_re = re.compile(r'^\d{2}\.\d{2}\.\d{4}$')
-                doc_re = re.compile(r'^(DL|RJ)\d{10,}$')
+                doc_re = re.compile(r'^(?:\d{8,}|DL\d{10,}|RJ\d{10,})$')
                 crn_re = re.compile(r'^CRN[-/A-Za-z0-9]{4,}$')
+                doc_any_re = re.compile(r'(?:DL\d{10,}|RJ\d{10,}|\d{8,})')
+                crn_any_re = re.compile(r'(CRN[-/A-Za-z0-9]{4,})')
 
                 total = 0.0
                 entries = []
@@ -4657,6 +4659,45 @@ def upload_dealer_statement():
                             top_key = int(round(float(w.get('top', 0)) / 2.0) * 2)
                             lines_map.setdefault(top_key, []).append(w)
 
+                        current = None
+                        current_posting_date = None
+                        pending_crn = False
+
+                        def _flush_current():
+                            nonlocal total
+                            if not current:
+                                return
+
+                            if not current.get('has_crn'):
+                                return
+
+                            amount_tokens = current.get('amount_tokens') or []
+                            if len(amount_tokens) < 2:
+                                return
+
+                            credit_token = amount_tokens[-2]
+                            balance_token = amount_tokens[-1]
+                            credit = _parse_amount_token(credit_token)
+                            balance = _parse_amount_token(balance_token)
+                            if credit is None or balance is None:
+                                return
+
+                            if not (100 < credit < 10000000):
+                                return
+
+                            posting_date = current.get('posting_date') or ''
+                            doc_no = current.get('doc_no') or ''
+                            dedup_key = f"{posting_date}|{doc_no}|{credit_token}|{balance_token}"
+                            if dedup_key in seen:
+                                return
+                            seen.add(dedup_key)
+
+                            total += credit
+                            entries.append({'line': current.get('preview', '')[:100], 'amount': credit})
+                            # Clear pending CRN marker once we've successfully recorded a CRN entry.
+                            nonlocal pending_crn
+                            pending_crn = False
+
                         for _, line_words in sorted(lines_map.items(), key=lambda x: x[0]):
                             line_words = sorted(line_words, key=lambda w: float(w.get('x0', 0)))
                             tokens = [w.get('text', '').strip() for w in line_words if w.get('text', '').strip()]
@@ -4667,38 +4708,76 @@ def upload_dealer_statement():
                             if 'INV/CRN' in tokens or ('Posting' in tokens and 'Doc' in tokens and 'No.' in tokens):
                                 continue
 
-                            has_crn = any(t == 'CRN' or crn_re.match(t) for t in tokens) or any('CRN-' in t for t in tokens)
-                            if not has_crn:
-                                continue
-
                             posting_date = next((t for t in tokens if date_re.match(t)), None)
-                            if not posting_date:
+                            if posting_date:
+                                current_posting_date = posting_date
+
+                            # Doc/CRN tokens are sometimes concatenated (e.g. DL...6337...CRN-DL/25-26/)
+                            doc_in_line = None
+                            crn_in_line = None
+                            for t in tokens:
+                                if doc_in_line is None:
+                                    m_doc = doc_any_re.search(t)
+                                    if m_doc:
+                                        doc_in_line = m_doc.group(0)
+                                if crn_in_line is None:
+                                    m_crn = crn_any_re.search(t)
+                                    if m_crn:
+                                        crn_in_line = m_crn.group(1)
+                                if doc_in_line is not None and crn_in_line is not None:
+                                    break
+
+                            if doc_in_line:
+                                # New transaction boundary: doc number changed (even within same posting date)
+                                if current is not None and current.get('doc_no') and doc_in_line != current.get('doc_no'):
+                                    _flush_current()
+                                    current = None
+
+                                if current is None:
+                                    current = {
+                                        'posting_date': current_posting_date or posting_date or '',
+                                        'doc_no': doc_in_line,
+                                        'has_crn': pending_crn,
+                                        'amount_tokens': [],
+                                        'preview': ' '.join(tokens)
+                                    }
+
+                            # Determine whether this visual line contains a CRN marker and/or amounts.
+                            line_amount_tokens = [t for t in tokens if amount_re.match(t)]
+                            line_has_crn = (crn_in_line is not None or any('CRN-' in t for t in tokens) or any(t == 'CRN' for t in tokens))
+
+                            # Some PDFs place the CRN marker on one line, and the amounts on the next line.
+                            # If we see a CRN marker but no amounts, carry a pending flag forward.
+                            if line_has_crn and len(line_amount_tokens) < 2:
+                                pending_crn = True
+
+                            # If CRN is present on the same line where we start the transaction, capture it.
+                            if current is not None and line_has_crn:
+                                current['has_crn'] = True
+
+                            # If a CRN marker was seen in a prior wrapped line, apply it to the current transaction.
+                            if current is not None and pending_crn:
+                                current['has_crn'] = True
+
+                            if current is None and current_posting_date:
+                                # If we haven't started a transaction yet, skip until we see a doc number.
                                 continue
 
-                            doc_no = next((t for t in tokens if doc_re.match(t)), None)
-
-                            amount_tokens = [t for t in tokens if amount_re.match(t)]
-                            if len(amount_tokens) < 2:
+                            if current is None:
                                 continue
 
-                            # In these statements, CRN rows usually have Credit and Balance as the last two amounts.
-                            credit_token = amount_tokens[-2]
-                            balance_token = amount_tokens[-1]
-                            credit = _parse_amount_token(credit_token)
-                            balance = _parse_amount_token(balance_token)
-                            if credit is None or balance is None:
-                                continue
+                            # If we started with a date-only line and later find doc_no in wrapped lines
+                            if current.get('doc_no') is None and doc_in_line:
+                                current['doc_no'] = doc_in_line
 
-                            if not (100 < credit < 10000000):
-                                continue
+                            if not current.get('has_crn'):
+                                current['has_crn'] = any(t == 'CRN' or crn_re.match(t) for t in tokens) or any('CRN-' in t for t in tokens) or any(crn_any_re.search(t) for t in tokens)
 
-                            dedup_key = f"{posting_date}|{doc_no or ''}|{credit_token}|{balance_token}"
-                            if dedup_key in seen:
-                                continue
-                            seen.add(dedup_key)
+                            current['amount_tokens'].extend(line_amount_tokens)
+                            if len(current.get('preview', '')) < 200:
+                                current['preview'] = (current.get('preview', '') + ' ' + ' '.join(tokens)).strip()
 
-                            total += credit
-                            entries.append({'line': ' '.join(tokens)[:100], 'amount': credit})
+                        _flush_current()
 
                 return {
                     'total': round(total, 2),
