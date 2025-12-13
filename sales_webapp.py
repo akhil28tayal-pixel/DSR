@@ -4816,15 +4816,26 @@ def upload_dealer_statement():
             
             # Extract GST Hold amount (closing balance)
             gst_hold_amount = 0
-            # Look for GST Hold section and extract the last amount (closing balance)
-            # Pattern: For GST Hold section, get all amounts, take the last one as closing
-            gst_hold_match = re.search(r'For GST Hold.*?(?=For SPL GL Balance Details-|For\s+[A-Z]|$)', full_text, re.DOTALL)
+            # Look for "For GST Hold" section specifically (not "For SPL GL Balance Details- For GST Hold")
+            # Match the section starting with "For GST Hold" on its own line
+            gst_hold_match = re.search(r'(?:^|\n)For GST Hold\s*\*?\s*\n.*?Opening Balance\s+(\d{3,}(?:,\d{3})*\.\d{2})[-]?', full_text, re.MULTILINE | re.DOTALL)
             if gst_hold_match:
-                gst_section = gst_hold_match.group(0)
-                # Find all amounts in the GST Hold section (exclude dates by requiring 3+ digits before decimal)
+                # Extract opening balance from the GST Hold section
+                opening_amount = float(gst_hold_match.group(1).replace(',', ''))
+                
+                # Get the full GST Hold section to check for closing balance
+                section_start = gst_hold_match.start()
+                # Find section end (next "For" section or end of text)
+                section_end_match = re.search(r'\n(?:For\s+[A-Z]|Total\s+Outstanding)', full_text[section_start:])
+                if section_end_match:
+                    gst_section = full_text[section_start:section_start + section_end_match.start()]
+                else:
+                    gst_section = full_text[section_start:section_start + 500]  # Limit to 500 chars
+                
+                # Find all amounts in the section (excluding dates)
                 amounts = re.findall(r'(\d{3,}(?:,\d{3})*\.\d{2})[-]?', gst_section)
                 if amounts:
-                    # Take the last amount as closing balance (or opening if no transactions)
+                    # Take the last amount as closing balance
                     gst_hold_amount = float(amounts[-1].replace(',', ''))
             
             # Extract CRN (Credit Note) entries
