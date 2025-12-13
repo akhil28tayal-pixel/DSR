@@ -217,7 +217,7 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold">&nbsp;</label>
-                        <button class="btn btn-primary w-100" onclick="loadData()">
+                        <button class="btn btn-primary w-100" onclick="loadData(event)">
                             <i class="bi bi-search me-1"></i> Load Data
                             <span class="spinner-border spinner-border-sm ms-2" role="status"></span>
                         </button>
@@ -658,16 +658,21 @@
             });
         }
         
-        function loadData() {
+        function loadData(event) {
             const monthYear = document.getElementById('monthYear').value;
             if (!monthYear) {
                 alert('Please select a month');
                 return;
             }
             
-            const btn = event.target.closest('button');
-            btn.classList.add('loading');
-            btn.disabled = true;
+            let btn = null;
+            if (event && event.target) {
+                btn = event.target.closest('button');
+            }
+            if (btn) {
+                btn.classList.add('loading');
+                btn.disabled = true;
+            }
             
             fetch('/api/dealer_financial_balance', {
                 method: 'POST',
@@ -676,8 +681,10 @@
             })
             .then(response => response.json())
             .then(data => {
-                btn.classList.remove('loading');
-                btn.disabled = false;
+                if (btn) {
+                    btn.classList.remove('loading');
+                    btn.disabled = false;
+                }
                 
                 if (data.success) {
                     dealersData = data.dealers;
@@ -690,8 +697,10 @@
                 }
             })
             .catch(error => {
-                btn.classList.remove('loading');
-                btn.disabled = false;
+                if (btn) {
+                    btn.classList.remove('loading');
+                    btn.disabled = false;
+                }
                 alert('Error loading data: ' + error);
             });
         }
