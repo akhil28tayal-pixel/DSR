@@ -2767,20 +2767,8 @@ def get_consolidated_vehicles():
         
         invoices_data = cursor.fetchall()
         
-        # Get trucks billed today
+        # Get previous billings for trucks that are billed today (to check for re-billing)
         truck_numbers_today = list(set([row[0] for row in invoices_data]))
-        
-        # Also get trucks billed earlier in the month that might still have pending material
-        cursor.execute('''
-            SELECT DISTINCT truck_number
-            FROM sales_data 
-            WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
-        ''', (month_start, selected_date))
-        
-        earlier_trucks = [row[0] for row in cursor.fetchall()]
-        
-        # Combine both lists - all trucks we need to track
-        all_truck_numbers = list(set(truck_numbers_today + earlier_trucks))
         previous_billings = {}
         
         # First, get opening balance vehicles for this month
@@ -2804,8 +2792,8 @@ def get_consolidated_vehicles():
                 'opc': row[5] or 0,
                 'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0)
             }
-            # Add opening balance to previous_billings for all trucks we're tracking
-            if truck in all_truck_numbers:
+            # Add opening balance to previous_billings for trucks billed today
+            if truck in truck_numbers_today:
                 if truck not in previous_billings:
                     previous_billings[truck] = []
                 previous_billings[truck].append({
@@ -2880,7 +2868,7 @@ def get_consolidated_vehicles():
                         'opc': closing_opc,
                         'total': closing_ppc + closing_premium + closing_opc
                     }
-                    if truck in all_truck_numbers:
+                    if truck in truck_numbers_today:
                         if truck not in previous_billings:
                             previous_billings[truck] = []
                         previous_billings[truck].append({
@@ -2949,7 +2937,7 @@ def get_consolidated_vehicles():
                         'opc': closing_opc,
                         'total': closing_ppc + closing_premium + closing_opc
                     }
-                    if truck in all_truck_numbers:
+                    if truck in truck_numbers_today:
                         if truck not in previous_billings:
                             previous_billings[truck] = []
                         previous_billings[truck].append({
@@ -2961,8 +2949,8 @@ def get_consolidated_vehicles():
                             'dealers': 'Opening Balance'
                         })
         
-        if all_truck_numbers:
-            placeholders = ','.join(['?' for _ in all_truck_numbers])
+        if truck_numbers_today:
+            placeholders = ','.join(['?' for _ in truck_numbers_today])
             # Include both sales_data and other_dealers_billing for previous billings
             cursor.execute(f'''
                 SELECT truck_number, sale_date, 
@@ -2988,7 +2976,7 @@ def get_consolidated_vehicles():
                 )
                 GROUP BY truck_number, sale_date
                 ORDER BY truck_number, sale_date
-            ''', (*all_truck_numbers, month_start, selected_date, *all_truck_numbers, month_start, selected_date))
+            ''', (*truck_numbers_today, month_start, selected_date, *truck_numbers_today, month_start, selected_date))
             
             for row in cursor.fetchall():
                 truck = row[0]
@@ -3003,17 +2991,17 @@ def get_consolidated_vehicles():
                     'dealers': row[6]
                 })
         
-        # Get ALL unloading details for all tracked trucks (current month only)
+        # Get ALL unloading details for trucks billed today (current month only)
         all_unloading_map = {}
-        if all_truck_numbers:
-            placeholders = ','.join(['?' for _ in all_truck_numbers])
+        if truck_numbers_today:
+            placeholders = ','.join(['?' for _ in truck_numbers_today])
             cursor.execute(f'''
                 SELECT id, truck_number, unloading_dealer, unloading_point, 
                        ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                        notes, dealer_code, is_other_dealer, unloading_date
                 FROM vehicle_unloading 
                 WHERE truck_number IN ({placeholders}) AND unloading_date >= ? AND unloading_date <= ?
-            ''', (*all_truck_numbers, month_start, selected_date))
+            ''', (*truck_numbers_today, month_start, selected_date))
             
             for row in cursor.fetchall():
                 truck = row[1]
@@ -3197,78 +3185,6 @@ def get_consolidated_vehicles():
         
         # Create a set of actual truck numbers billed today (for checking if a truck is billed today)
         actual_trucks_billed_today = set(td['truck_number'] for td in trucks_today.values())
-        
-        # Add cards for trucks billed earlier in the month but not today
-        for truck_number in earlier_trucks:
-            if truck_number not in actual_trucks_billed_today:
-                # This truck was billed earlier but not today - check if it has pending material
-                # Get the most recent billing details
-                cursor.execute('''
-                    SELECT dealer_code, dealer_name, plant_depot, sale_date,
-                           SUM(ppc_quantity) as ppc, SUM(premium_quantity) as premium, 
-                           SUM(opc_quantity) as opc, SUM(total_quantity) as total
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
-                    GROUP BY dealer_code, dealer_name, plant_depot, sale_date
-                    ORDER BY sale_date DESC
-                    LIMIT 1
-                ''', (truck_number, month_start, selected_date))
-                recent_billing = cursor.fetchone()
-                
-                if recent_billing:
-                    dealer_code = recent_billing[0]
-                    dealer_name = recent_billing[1]
-                    plant_depot = recent_billing[2] or 'PLANT'
-                    billing_date = recent_billing[3]
-                    
-                    # Calculate if there's pending material
-                    # Get total billed for this truck in current month
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
-                               COALESCE(SUM(opc_quantity), 0)
-                        FROM sales_data
-                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
-                    ''', (truck_number, month_start, selected_date))
-                    total_billed = cursor.fetchone()
-                    
-                    # Get total unloaded for this truck in current month
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
-                               COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                    ''', (truck_number, month_start, selected_date))
-                    total_unloaded = cursor.fetchone()
-                    
-                    # Include opening balance
-                    opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
-                    opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
-                    opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
-                    
-                    # Calculate pending
-                    pending_ppc = opening_ppc + (total_billed[0] or 0) - (total_unloaded[0] or 0)
-                    pending_premium = opening_premium + (total_billed[1] or 0) - (total_unloaded[1] or 0)
-                    pending_opc = opening_opc + (total_billed[2] or 0) - (total_unloaded[2] or 0)
-                    
-                    # Only add if there's pending material (positive balance)
-                    if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
-                        card_key = f"{truck_number}_{plant_depot}_earlier"
-                        trucks_today[card_key] = {
-                            'truck_number': truck_number,
-                            'card_key': card_key,
-                            'plant_depot': plant_depot,
-                            'invoices': [],  # No invoices for today
-                            'dealer_codes': [dealer_code] if dealer_code else [],
-                            'total_ppc': 0,
-                            'total_premium': 0,
-                            'total_opc': 0,
-                            'total_quantity': 0,
-                            'total_value': 0,
-                            'billing_date': billing_date,  # Use the actual billing date
-                            'unloading_details': all_unloading_map.get(truck_number, []),
-                            'other_billing': other_billing_map.get(truck_number, []),
-                            'from_earlier_date': True  # Flag to indicate this is from earlier
-                        }
         
         # Add other_billing quantities to truck totals
         for truck_number, truck_data in trucks_today.items():
