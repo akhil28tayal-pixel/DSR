@@ -4563,6 +4563,7 @@ def save_dealer_financial_balance():
             opening_balance = dealer.get('opening_balance', 0)
             credit_note = dealer.get('credit_note', 0)
             debit_note = dealer.get('debit_note', 0)
+            gst_hold = dealer.get('gst_hold', 0)
             
             # Upsert opening balance
             cursor.execute('''
@@ -4572,13 +4573,13 @@ def save_dealer_financial_balance():
                 DO UPDATE SET opening_balance = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
             ''', (dealer_code, dealer_name, opening_balance, month_year, opening_balance, dealer_name))
             
-            # Upsert credit note
+            # Upsert credit note and GST hold
             cursor.execute('''
-                INSERT INTO credit_discounts (dealer_code, dealer_name, credit_discount, month_year, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO credit_discounts (dealer_code, dealer_name, credit_discount, gst_hold, month_year, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(dealer_code, month_year) 
-                DO UPDATE SET credit_discount = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
-            ''', (dealer_code, dealer_name, credit_note, month_year, credit_note, dealer_name))
+                DO UPDATE SET credit_discount = ?, gst_hold = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, credit_note, gst_hold, month_year, credit_note, gst_hold, dealer_name))
             
             # Upsert debit note
             cursor.execute('''
