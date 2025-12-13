@@ -3187,6 +3187,42 @@ def get_consolidated_vehicles():
             trucks_today[card_key]['total_quantity'] += total_qty
             trucks_today[card_key]['total_value'] += row[11] or 0
         
+        # Add vehicles from earlier in the month that are not billed today
+        # These are vehicles that might still have pending material
+        for truck_number in earlier_trucks:
+            if truck_number not in [td['truck_number'] for td in trucks_today.values()]:
+                # This truck was billed earlier but not today - add it
+                # Get the most recent billing details for this truck
+                cursor.execute('''
+                    SELECT dealer_code, dealer_name, plant_depot, sale_date
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ORDER BY sale_date DESC
+                    LIMIT 1
+                ''', (truck_number, month_start, selected_date))
+                recent_billing = cursor.fetchone()
+                
+                if recent_billing:
+                    plant_depot = recent_billing[2] or 'PLANT'
+                    card_key = f"{truck_number}_{plant_depot}_earlier"
+                    
+                    trucks_today[card_key] = {
+                        'truck_number': truck_number,
+                        'card_key': card_key,
+                        'plant_depot': plant_depot,
+                        'invoices': [],  # No invoices for today
+                        'dealer_codes': [recent_billing[0]] if recent_billing[0] else [],
+                        'total_ppc': 0,
+                        'total_premium': 0,
+                        'total_opc': 0,
+                        'total_quantity': 0,
+                        'total_value': 0,
+                        'billing_date': recent_billing[3],  # Use the actual billing date
+                        'unloading_details': [],
+                        'other_billing': other_billing_map.get(truck_number, []),
+                        'from_earlier_date': True  # Flag to indicate this is from earlier
+                    }
+        
         # Assign unloading details to cards
         # For trucks with only one card (either PLANT or DEPOT), show all unloading
         # For trucks with multiple cards (both PLANT and DEPOT), filter by dealer_code
