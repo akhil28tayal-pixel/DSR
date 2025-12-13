@@ -4636,7 +4636,7 @@ def upload_dealer_statement():
                 except Exception:
                     return None
 
-                amount_re = re.compile(r'^\d{1,3}(?:,\d{3})*\.\d{2}$|^\d+\.\d{2}$')
+                amount_re = re.compile(r'^\d{1,3}(?:,\d{3})*\.\d{1,2}$|^\d+\.\d{1,2}$')
                 date_re = re.compile(r'^\d{2}\.\d{2}\.\d{4}$')
                 doc_re = re.compile(r'^(?:\d{8,}|DL\d{10,}|RJ\d{10,})$')
                 crn_re = re.compile(r'^CRN[-/A-Za-z0-9]{4,}$')
