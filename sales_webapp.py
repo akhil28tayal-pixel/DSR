@@ -4821,8 +4821,8 @@ def upload_dealer_statement():
             gst_hold_match = re.search(r'For GST Hold.*?(?=For SPL GL Balance Details-|For\s+[A-Z]|$)', full_text, re.DOTALL)
             if gst_hold_match:
                 gst_section = gst_hold_match.group(0)
-                # Find all amounts in the GST Hold section
-                amounts = re.findall(r'([\d,]+\.\d{2})[-]?', gst_section)
+                # Find all amounts in the GST Hold section (exclude dates by requiring 3+ digits before decimal)
+                amounts = re.findall(r'(\d{3,}(?:,\d{3})*\.\d{2})[-]?', gst_section)
                 if amounts:
                     # Take the last amount as closing balance (or opening if no transactions)
                     gst_hold_amount = float(amounts[-1].replace(',', ''))
