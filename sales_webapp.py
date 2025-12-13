@@ -1310,30 +1310,33 @@ def get_dealers_for_payment_reminder():
         # Get month_year for the balance date
         month_year = balance_date_obj.strftime('%Y-%m')
         
-        # Get all dealers who have any data for this month
+        # Get all dealers who have any data up to the balance date
         cursor.execute('''
             SELECT DISTINCT dealer_code, dealer_name
             FROM (
-                SELECT dealer_code, dealer_name FROM sales_data WHERE strftime('%Y-%m', sale_date) = ?
+                SELECT dealer_code, dealer_name FROM sales_data WHERE sale_date <= ?
                 UNION
-                SELECT dealer_code, dealer_name FROM collections_data WHERE strftime('%Y-%m', posting_date) = ?
+                SELECT dealer_code, dealer_name FROM collections_data WHERE posting_date <= ?
                 UNION
-                SELECT dealer_code, dealer_name FROM opening_balances WHERE month_year = ?
+                SELECT dealer_code, dealer_name FROM opening_balances
             )
             ORDER BY dealer_name
-        ''', (month_year, month_year, month_year))
+        ''', (balance_date_str, balance_date_str))
         
         all_dealers = cursor.fetchall()
         dealers_with_balance = []
         
         for dealer_code, dealer_name in all_dealers:
-            # Get opening balance
+            # Get opening balance from the most recent month that has data
             cursor.execute('''
-                SELECT opening_balance FROM opening_balances
-                WHERE dealer_code = ? AND month_year = ?
-            ''', (dealer_code, month_year))
+                SELECT opening_balance, month_year FROM opening_balances
+                WHERE dealer_code = ?
+                ORDER BY month_year DESC
+                LIMIT 1
+            ''', (dealer_code,))
             opening_row = cursor.fetchone()
             opening = opening_row[0] if opening_row else 0
+            opening_month = opening_row[1] if opening_row else None
             
             # Get total purchases up to balance date
             cursor.execute('''
@@ -1351,19 +1354,19 @@ def get_dealers_for_payment_reminder():
             collection_row = cursor.fetchone()
             collection = collection_row[0] if collection_row and collection_row[0] else 0
             
-            # Get credit note for the month
+            # Get credit note - sum all months up to balance date month
             cursor.execute('''
-                SELECT credit_discount, gst_hold FROM credit_discounts
-                WHERE dealer_code = ? AND month_year = ?
+                SELECT SUM(credit_discount), SUM(gst_hold) FROM credit_discounts
+                WHERE dealer_code = ? AND month_year <= ?
             ''', (dealer_code, month_year))
             credit_row = cursor.fetchone()
             credit = credit_row[0] if credit_row and credit_row[0] else 0
             gst_hold = credit_row[1] if credit_row and credit_row[1] else 0
             
-            # Get debit note for the month
+            # Get debit note - sum all months up to balance date month
             cursor.execute('''
-                SELECT debit_amount FROM debit_notes
-                WHERE dealer_code = ? AND month_year = ?
+                SELECT SUM(debit_amount) FROM debit_notes
+                WHERE dealer_code = ? AND month_year <= ?
             ''', (dealer_code, month_year))
             debit_row = cursor.fetchone()
             debit = debit_row[0] if debit_row and debit_row[0] else 0
@@ -1438,11 +1441,13 @@ def generate_payment_reminder_message():
         
         dealer_name = dealer_row[0] if dealer_row else 'Unknown Dealer'
         
-        # Get opening balance
+        # Get opening balance from the most recent month that has data
         cursor.execute('''
             SELECT opening_balance FROM opening_balances
-            WHERE dealer_code = ? AND month_year = ?
-        ''', (dealer_code, month_year))
+            WHERE dealer_code = ?
+            ORDER BY month_year DESC
+            LIMIT 1
+        ''', (dealer_code,))
         opening_row = cursor.fetchone()
         opening = opening_row[0] if opening_row else 0
         
@@ -1462,19 +1467,19 @@ def generate_payment_reminder_message():
         collection_row = cursor.fetchone()
         collection = collection_row[0] if collection_row and collection_row[0] else 0
         
-        # Get credit note and GST hold for the month
+        # Get credit note and GST hold - sum all months up to balance date month
         cursor.execute('''
-            SELECT credit_discount, gst_hold FROM credit_discounts
-            WHERE dealer_code = ? AND month_year = ?
+            SELECT SUM(credit_discount), SUM(gst_hold) FROM credit_discounts
+            WHERE dealer_code = ? AND month_year <= ?
         ''', (dealer_code, month_year))
         credit_row = cursor.fetchone()
         credit = credit_row[0] if credit_row and credit_row[0] else 0
         gst_hold = credit_row[1] if credit_row and credit_row[1] else 0
         
-        # Get debit note for the month
+        # Get debit note - sum all months up to balance date month
         cursor.execute('''
-            SELECT debit_amount FROM debit_notes
-            WHERE dealer_code = ? AND month_year = ?
+            SELECT SUM(debit_amount) FROM debit_notes
+            WHERE dealer_code = ? AND month_year <= ?
         ''', (dealer_code, month_year))
         debit_row = cursor.fetchone()
         debit = debit_row[0] if debit_row and debit_row[0] else 0
