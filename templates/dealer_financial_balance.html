@@ -296,12 +296,13 @@
                                 <th>Collection (₹)</th>
                                 <th>Credit Note (₹)</th>
                                 <th>Debit Note (₹)</th>
+                                <th>GST Hold (₹)</th>
                                 <th>Closing Balance (₹)</th>
                             </tr>
                         </thead>
                         <tbody id="dealerTableBody">
                             <tr>
-                                <td colspan="8" class="text-center text-muted py-4">
+                                <td colspan="9" class="text-center text-muted py-4">
                                     <i class="bi bi-calendar3 me-2"></i>Select a month and click "Load Data" to view dealer balances
                                 </td>
                             </tr>
@@ -314,6 +315,7 @@
                                 <td id="footCollection">₹0</td>
                                 <td id="footCredit">₹0</td>
                                 <td id="footDebit">₹0</td>
+                                <td id="footGstHold">₹0</td>
                                 <td id="footClosing">₹0</td>
                             </tr>
                         </tfoot>
@@ -449,6 +451,33 @@
                                             <input class="form-check-input" type="checkbox" id="updateDebitNotes" checked>
                                             <label class="form-check-label" for="updateDebitNotes">
                                                 Update Debit Notes
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- GST Hold -->
+                        <div class="card mb-3 border-warning">
+                            <div class="card-header bg-warning text-dark">
+                                <i class="bi bi-shield-exclamation me-2"></i>GST Hold
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">PDF Value</label>
+                                        <p class="fw-bold fs-5 text-warning" id="pdfGstHold">₹0</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted">Database Value</label>
+                                        <p class="fw-bold fs-5" id="dbGstHold">₹0</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check mt-4">
+                                            <input class="form-check-input" type="checkbox" id="updateGstHold" checked>
+                                            <label class="form-check-label" for="updateGstHold">
+                                                Update GST Hold
                                             </label>
                                         </div>
                                     </div>
@@ -602,6 +631,12 @@
             document.getElementById('pdfDebitNotes').textContent = `₹${pdfDrn.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
             document.getElementById('dbDebitNotes').textContent = `₹${dbDrn.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
             document.getElementById('drnEntriesCount').textContent = `${data.debit_notes.entries_count} entries found`;
+            
+            // GST Hold
+            const pdfGstHold = data.gst_hold.pdf_value;
+            const dbGstHold = data.gst_hold.db_value;
+            document.getElementById('pdfGstHold').textContent = `₹${pdfGstHold.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            document.getElementById('dbGstHold').textContent = `₹${dbGstHold.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
         }
         
         async function savePdfData() {
@@ -612,8 +647,9 @@
             
             const updateCrn = document.getElementById('updateCreditNotes').checked;
             const updateDrn = document.getElementById('updateDebitNotes').checked;
+            const updateGstHold = document.getElementById('updateGstHold').checked;
             
-            if (!updateCrn && !updateDrn) {
+            if (!updateCrn && !updateDrn && !updateGstHold) {
                 alert('Please select at least one item to update');
                 return;
             }
@@ -623,7 +659,8 @@
                 dealer_name: parsedPdfData.dealer_name,
                 month_year: parsedPdfData.month_year,
                 credit_note: updateCrn ? parsedPdfData.credit_notes.pdf_value : 0,
-                debit_note: updateDrn ? parsedPdfData.debit_notes.pdf_value : 0
+                debit_note: updateDrn ? parsedPdfData.debit_notes.pdf_value : 0,
+                gst_hold: updateGstHold ? parsedPdfData.gst_hold.pdf_value : 0
             };
             
             try {
@@ -711,7 +748,7 @@
             if (dealersData.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             <i class="bi bi-inbox me-2"></i>No dealers found for this month
                         </td>
                     </tr>
@@ -740,6 +777,12 @@
                             <input type="number" class="form-control input-amount" 
                                 value="${dealer.debit_note || 0}" 
                                 onchange="updateValue(${index}, 'debit_note', this.value)"
+                                step="0.01">
+                        </td>
+                        <td>
+                            <input type="number" class="form-control input-amount" 
+                                value="${dealer.gst_hold || 0}" 
+                                onchange="updateValue(${index}, 'gst_hold', this.value)"
                                 step="0.01">
                         </td>
                         <td class="${closingClass}">${formatCurrency(closing)}</td>
@@ -774,7 +817,7 @@
         
         function updateSummary() {
             let totalOpening = 0, totalPurchase = 0, totalCollection = 0;
-            let totalCredit = 0, totalDebit = 0, totalClosing = 0;
+            let totalCredit = 0, totalDebit = 0, totalGstHold = 0, totalClosing = 0;
             
             dealersData.forEach(dealer => {
                 totalOpening += parseFloat(dealer.opening_balance) || 0;
@@ -782,6 +825,7 @@
                 totalCollection += parseFloat(dealer.collection) || 0;
                 totalCredit += parseFloat(dealer.credit_note) || 0;
                 totalDebit += parseFloat(dealer.debit_note) || 0;
+                totalGstHold += parseFloat(dealer.gst_hold) || 0;
                 totalClosing += calculateClosing(dealer);
             });
             
@@ -797,6 +841,7 @@
             document.getElementById('footCollection').textContent = formatCurrency(totalCollection);
             document.getElementById('footCredit').textContent = formatCurrency(totalCredit);
             document.getElementById('footDebit').textContent = formatCurrency(totalDebit);
+            document.getElementById('footGstHold').textContent = formatCurrency(totalGstHold);
             document.getElementById('footClosing').textContent = formatCurrency(totalClosing);
         }
         

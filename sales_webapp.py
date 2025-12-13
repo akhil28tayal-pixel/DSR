@@ -4385,7 +4385,8 @@ def get_dealer_financial_balance():
                 'purchase_value': 0,
                 'collection': 0,
                 'credit_note': 0,
-                'debit_note': 0
+                'debit_note': 0,
+                'gst_hold': 0
             }
         
         # Get purchase values (total_purchase_value from sales_data)
@@ -4504,9 +4505,9 @@ def get_dealer_financial_balance():
                 debits = prev_debits.get(dealer_code, 0)
                 dealers_map[dealer_code]['opening_balance'] = round(opening + sales - collections - credits + debits, 2)
         
-        # Get credit notes for current month
+        # Get credit notes and GST hold for current month
         cursor.execute('''
-            SELECT dealer_code, credit_discount
+            SELECT dealer_code, credit_discount, gst_hold
             FROM credit_discounts
             WHERE month_year = ?
         ''', (month_year,))
@@ -4515,6 +4516,7 @@ def get_dealer_financial_balance():
             dealer_code = str(row[0])
             if dealer_code in dealers_map:
                 dealers_map[dealer_code]['credit_note'] = row[1] or 0
+                dealers_map[dealer_code]['gst_hold'] = row[2] or 0
         
         # Get debit notes for current month
         cursor.execute('''
@@ -4812,6 +4814,12 @@ def upload_dealer_statement():
                 # Default to current month
                 month_year = datetime.now().strftime('%Y-%m')
             
+            # Extract GST Hold amount
+            gst_hold_amount = 0
+            gst_hold_match = re.search(r'For GST Hold.*?Opening Balance\s+([\d,]+\.\d{2})[-]?', full_text, re.DOTALL)
+            if gst_hold_match:
+                gst_hold_amount = float(gst_hold_match.group(1).replace(',', ''))
+            
             # Extract CRN (Credit Note) entries
             total_crn = 0
             crn_entries = []
@@ -4947,13 +4955,14 @@ def upload_dealer_statement():
                 # Opening = prev_opening + prev_sales - prev_collections - prev_credits + prev_debits
                 existing_opening_balance = round(prev_opening + prev_sales - prev_collections - prev_credits + prev_debits, 2)
             
-            # Get existing credit note
+            # Get existing credit note and GST hold
             cursor.execute('''
-                SELECT credit_discount FROM credit_discounts
+                SELECT credit_discount, gst_hold FROM credit_discounts
                 WHERE dealer_code = ? AND month_year = ?
             ''', (dealer_code, month_year))
             existing_crn = cursor.fetchone()
             existing_crn_value = existing_crn[0] if existing_crn else 0
+            existing_gst_hold = existing_crn[1] if existing_crn and len(existing_crn) > 1 else 0
             
             # Get existing debit note
             cursor.execute('''
@@ -4990,6 +4999,10 @@ def upload_dealer_statement():
                         'pdf_value': total_drn,
                         'db_value': existing_drn_value,
                         'entries_count': len(drn_entries)
+                    },
+                    'gst_hold': {
+                        'pdf_value': gst_hold_amount,
+                        'db_value': existing_gst_hold
                     }
                 }
             })
@@ -5013,6 +5026,7 @@ def save_statement_data():
         month_year = data.get('month_year')
         credit_note = data.get('credit_note', 0)
         debit_note = data.get('debit_note', 0)
+        gst_hold = data.get('gst_hold', 0)
         opening_balance = data.get('opening_balance')
         
         if not dealer_code or not month_year:
@@ -5021,14 +5035,14 @@ def save_statement_data():
         db = SalesCollectionsDatabase(DB_PATH)
         cursor = db.conn.cursor()
         
-        # Update credit note if provided
-        if credit_note > 0:
+        # Update credit note and GST hold if provided
+        if credit_note > 0 or gst_hold > 0:
             cursor.execute('''
-                INSERT INTO credit_discounts (dealer_code, dealer_name, credit_discount, month_year, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO credit_discounts (dealer_code, dealer_name, credit_discount, gst_hold, month_year, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(dealer_code, month_year) 
-                DO UPDATE SET credit_discount = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
-            ''', (dealer_code, dealer_name, credit_note, month_year, credit_note, dealer_name))
+                DO UPDATE SET credit_discount = ?, gst_hold = ?, dealer_name = ?, updated_at = CURRENT_TIMESTAMP
+            ''', (dealer_code, dealer_name, credit_note, gst_hold, month_year, credit_note, gst_hold, dealer_name))
         
         # Update debit note if provided
         if debit_note > 0:
