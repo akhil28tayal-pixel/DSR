@@ -4817,9 +4817,8 @@ def upload_dealer_statement():
             
             # Extract GST Hold amount (closing balance)
             gst_hold_amount = 0
-            # Look for "For GST Hold" section specifically (not "For SPL GL Balance Details- For GST Hold")
-            # Match the section starting with "For GST Hold" on its own line
-            gst_hold_match = re.search(r'(?:^|\n)For GST Hold\s*\*?\s*\n.*?Opening Balance\s+(\d{3,}(?:,\d{3})*\.\d{2})[-]?', full_text, re.MULTILINE | re.DOTALL)
+            # Look for "For GST Hold" section - can be standalone or part of "For SPL GL Balance Details- For GST Hold"
+            gst_hold_match = re.search(r'For GST Hold\s*\*?\s*\n.*?Opening Balance\s+(\d{3,}(?:,\d{3})*\.\d{2})[-]?', full_text, re.MULTILINE | re.DOTALL)
             if gst_hold_match:
                 # Extract opening balance from the GST Hold section
                 opening_amount = float(gst_hold_match.group(1).replace(',', ''))
