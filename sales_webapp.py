@@ -2792,8 +2792,20 @@ def get_consolidated_vehicles():
         
         invoices_data = cursor.fetchall()
         
+        # Get vehicles billed earlier in the month that might still be pending
+        cursor.execute('''
+            SELECT DISTINCT truck_number
+            FROM sales_data 
+            WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
+        ''', (month_start, selected_date))
+        
+        earlier_trucks = [row[0] for row in cursor.fetchall()]
+        
         # Get previous billings for trucks that are billed today (to check for re-billing)
         truck_numbers_today = list(set([row[0] for row in invoices_data]))
+        
+        # Combine today's trucks with earlier trucks for comprehensive view
+        all_truck_numbers = list(set(truck_numbers_today + earlier_trucks))
         previous_billings = {}
         
         # First, get opening balance vehicles for this month
@@ -2817,8 +2829,8 @@ def get_consolidated_vehicles():
                 'opc': row[5] or 0,
                 'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0)
             }
-            # Add opening balance to previous_billings for trucks billed today
-            if truck in truck_numbers_today:
+            # Add opening balance to previous_billings for all trucks we're tracking
+            if truck in all_truck_numbers:
                 if truck not in previous_billings:
                     previous_billings[truck] = []
                 previous_billings[truck].append({
@@ -2893,7 +2905,7 @@ def get_consolidated_vehicles():
                         'opc': closing_opc,
                         'total': closing_ppc + closing_premium + closing_opc
                     }
-                    if truck in truck_numbers_today:
+                    if truck in all_truck_numbers:
                         if truck not in previous_billings:
                             previous_billings[truck] = []
                         previous_billings[truck].append({
@@ -2962,7 +2974,7 @@ def get_consolidated_vehicles():
                         'opc': closing_opc,
                         'total': closing_ppc + closing_premium + closing_opc
                     }
-                    if truck in truck_numbers_today:
+                    if truck in all_truck_numbers:
                         if truck not in previous_billings:
                             previous_billings[truck] = []
                         previous_billings[truck].append({
@@ -2974,8 +2986,8 @@ def get_consolidated_vehicles():
                             'dealers': 'Opening Balance'
                         })
         
-        if truck_numbers_today:
-            placeholders = ','.join(['?' for _ in truck_numbers_today])
+        if all_truck_numbers:
+            placeholders = ','.join(['?' for _ in all_truck_numbers])
             # Include both sales_data and other_dealers_billing for previous billings
             cursor.execute(f'''
                 SELECT truck_number, sale_date, 
@@ -3001,7 +3013,7 @@ def get_consolidated_vehicles():
                 )
                 GROUP BY truck_number, sale_date
                 ORDER BY truck_number, sale_date
-            ''', (*truck_numbers_today, month_start, selected_date, *truck_numbers_today, month_start, selected_date))
+            ''', (*all_truck_numbers, month_start, selected_date, *all_truck_numbers, month_start, selected_date))
             
             for row in cursor.fetchall():
                 truck = row[0]
@@ -3018,15 +3030,15 @@ def get_consolidated_vehicles():
         
         # Get ALL unloading details for trucks billed today (current month only)
         all_unloading_map = {}
-        if truck_numbers_today:
-            placeholders = ','.join(['?' for _ in truck_numbers_today])
+        if all_truck_numbers:
+            placeholders = ','.join(['?' for _ in all_truck_numbers])
             cursor.execute(f'''
                 SELECT id, truck_number, unloading_dealer, unloading_point, 
                        ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                        notes, dealer_code, is_other_dealer, unloading_date
                 FROM vehicle_unloading 
                 WHERE truck_number IN ({placeholders}) AND unloading_date >= ? AND unloading_date <= ?
-            ''', (*truck_numbers_today, month_start, selected_date))
+            ''', (*all_truck_numbers, month_start, selected_date))
             
             for row in cursor.fetchall():
                 truck = row[1]
