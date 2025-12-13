@@ -220,6 +220,20 @@
             background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
         }
 
+        #payment-tab.active {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;
+        }
+
+        .payment-dealer-item.selected {
+            background-color: #fee2e2 !important;
+            border-color: #ef4444 !important;
+        }
+
+        .payment-dealer-item.selected:hover {
+            background-color: #fee2e2 !important;
+            border-color: #ef4444 !important;
+        }
+
         .unloading-dealer-item.selected {
             background-color: #d1fae5 !important;
             border-color: #10b981 !important;
@@ -290,6 +304,12 @@
                     <i class="fas fa-truck-loading me-2"></i>Unloading Message
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="payment-tab" data-bs-toggle="tab" data-bs-target="#payment-content" 
+                        type="button" role="tab" aria-controls="payment-content" aria-selected="false">
+                    <i class="fas fa-money-bill-wave me-2"></i>Payment Reminder
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="generatorTabContent">
@@ -337,6 +357,59 @@
                                     <div class="alert alert-info">
                                         <i class="fas fa-info-circle me-2"></i>
                                         No dealers found for the selected date. Please choose a different date.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Reminder Tab Content -->
+            <div class="tab-pane fade" id="payment-content" role="tabpanel" aria-labelledby="payment-tab">
+                <div class="row">
+                    <!-- Date Selection for Payment Reminder -->
+                    <div class="col-md-4 mb-4">
+                        <div class="card">
+                            <div class="card-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;">
+                                <i class="fas fa-calendar me-2"></i>Select Date
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="paymentDate" class="form-label">Reminder Date</label>
+                                    <input type="date" class="form-control" id="paymentDate" required>
+                                    <small class="text-muted">Balance will be calculated from 4 working days before this date</small>
+                                </div>
+                                <button type="button" class="btn w-100" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none;" onclick="loadPaymentDealers()">
+                                    <i class="fas fa-search me-2"></i>Find Dealers
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dealer Selection for Payment Reminder -->
+                    <div class="col-md-8 mb-4">
+                        <div class="card">
+                            <div class="card-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;">
+                                <i class="fas fa-users me-2"></i>Select Dealer
+                                <span id="paymentDealerCount" class="badge bg-light text-dark ms-2" style="display: none;"></span>
+                            </div>
+                            <div class="card-body">
+                                <div id="paymentDealerLoading" class="loading">
+                                    <div class="spinner-border text-danger" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading dealers...</p>
+                                </div>
+                                
+                                <div id="paymentDealerList" class="row" style="display: none;">
+                                    <!-- Dealers will be loaded here -->
+                                </div>
+                                
+                                <div id="noPaymentDealers" style="display: none;">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        No dealers with outstanding balance found. Please choose a different date.
                                     </div>
                                 </div>
                             </div>
@@ -865,6 +938,7 @@
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('billingDate').value = today;
             document.getElementById('unloadingDate').value = today;
+            document.getElementById('paymentDate').value = today;
         });
 
         // ============== Unloading Tab Functions ==============
@@ -1126,6 +1200,284 @@
                 const successful = document.execCommand('copy');
                 if (successful) {
                     showUnloadingCopySuccess(dealerIndex);
+                } else {
+                    throw new Error('Copy command failed');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                alert('Copy failed. Please select and copy the message manually.');
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+
+        // ============== Payment Reminder Tab Functions ==============
+        let selectedPaymentDealer = null;
+        let selectedPaymentDate = null;
+
+        function loadPaymentDealers() {
+            const dateInput = document.getElementById('paymentDate');
+            const date = dateInput.value;
+            
+            if (!date) {
+                alert('Please select a reminder date');
+                return;
+            }
+            
+            selectedPaymentDate = date;
+            
+            // Show loading
+            document.getElementById('paymentDealerLoading').style.display = 'block';
+            document.getElementById('paymentDealerList').style.display = 'none';
+            document.getElementById('noPaymentDealers').style.display = 'none';
+            document.getElementById('paymentDealerCount').style.display = 'none';
+            
+            fetch('/get_dealers_for_payment_reminder', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ date: date })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('paymentDealerLoading').style.display = 'none';
+                
+                if (data.success && data.dealers.length > 0) {
+                    displayPaymentDealers(data.dealers);
+                } else {
+                    document.getElementById('noPaymentDealers').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                document.getElementById('paymentDealerLoading').style.display = 'none';
+                alert('Error loading dealers: ' + error.message);
+            });
+        }
+
+        function displayPaymentDealers(dealers) {
+            const dealerList = document.getElementById('paymentDealerList');
+            const dealerCount = document.getElementById('paymentDealerCount');
+            
+            dealerList.innerHTML = '';
+            
+            dealers.forEach((dealer, index) => {
+                const dealerRow = document.createElement('div');
+                dealerRow.className = 'col-12 mb-2';
+                
+                const escapedDealerName = dealer.dealer_name.replace(/'/g, "\\'").replace(/"/g, '\\"');
+                const closingBalance = parseFloat(dealer.closing_balance || 0);
+                const gstHold = parseFloat(dealer.gst_hold || 0);
+                const netBalance = closingBalance - gstHold;
+                const balanceDate = dealer.balance_date || '';
+                
+                dealerRow.innerHTML = `
+                    <div class="list-group-item list-group-item-action dealer-item p-3 border rounded payment-dealer-item" 
+                         onclick="selectPaymentDealer('${dealer.dealer_code}', '${escapedDealerName}', ${closingBalance}, ${gstHold}, '${balanceDate}', ${index})"
+                         style="cursor: pointer; transition: all 0.2s ease; border: 1px solid #dee2e6;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <div class="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                         style="width: 40px; height: 40px; font-weight: bold;">
+                                        ${index + 1}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1 text-danger fw-bold">${dealer.dealer_name}</h6>
+                                    <small class="text-muted">Code: ${dealer.dealer_code} | Balance as of: ${balanceDate}</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <div class="mb-1">
+                                    <small class="text-muted">Closing: </small>
+                                    <span class="badge bg-secondary">₹${closingBalance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                </div>
+                                <div class="mb-1">
+                                    <small class="text-muted">GST Hold: </small>
+                                    <span class="badge bg-warning text-dark">₹${gstHold.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Net: </small>
+                                    <span class="badge bg-danger fs-6 px-3 py-2">₹${netBalance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Message Area (Initially Hidden) -->
+                        <div id="paymentMessageArea_${index}" class="message-area mt-3" style="display: none;">
+                            <hr class="my-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0 text-danger">
+                                    <i class="fab fa-whatsapp me-2"></i>WhatsApp Message
+                                </h6>
+                                <button type="button" class="btn btn-sm" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none;" onclick="copyPaymentMessage(${index}); event.stopPropagation();" id="paymentCopyBtn_${index}">
+                                    <i class="fas fa-copy me-1"></i>Copy
+                                </button>
+                            </div>
+                            <div id="paymentMessageLoading_${index}" class="text-center py-3" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-danger" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <small class="text-muted ms-2">Generating message...</small>
+                            </div>
+                            <div id="paymentMessageContent_${index}" class="message-content p-3 bg-light border rounded" 
+                                 style="font-family: monospace; white-space: pre-wrap; border-left: 4px solid #25D366; display: none;">
+                                <!-- Message will appear here -->
+                            </div>
+                            <div id="paymentMessageError_${index}" class="alert alert-danger mt-2" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="paymentErrorText_${index}"></span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                dealerList.appendChild(dealerRow);
+            });
+            
+            dealerCount.textContent = `${dealers.length} dealers found`;
+            dealerCount.style.display = 'inline-block';
+            dealerList.style.display = 'block';
+        }
+
+        function selectPaymentDealer(dealerCode, dealerName, closingBalance, gstHold, balanceDate, dealerIndex) {
+            const messageArea = document.getElementById(`paymentMessageArea_${dealerIndex}`);
+            const clickedItem = event.currentTarget;
+            
+            // Check if this dealer is already selected and message is visible
+            if (selectedPaymentDealer && selectedPaymentDealer.index === dealerIndex && messageArea.style.display === 'block') {
+                // Hide the message area and deselect
+                messageArea.style.display = 'none';
+                clickedItem.classList.remove('selected');
+                clickedItem.style.backgroundColor = '';
+                clickedItem.style.borderColor = '#dee2e6';
+                selectedPaymentDealer = null;
+                return;
+            }
+            
+            // Hide all other message areas
+            document.querySelectorAll('#payment-content .message-area').forEach(area => {
+                area.style.display = 'none';
+            });
+            
+            // Remove previous selection
+            document.querySelectorAll('.payment-dealer-item').forEach(item => {
+                item.classList.remove('selected');
+                item.style.backgroundColor = '';
+                item.style.borderColor = '#dee2e6';
+            });
+            
+            // Add selection to clicked item
+            clickedItem.classList.add('selected');
+            clickedItem.style.backgroundColor = '#fee2e2';
+            clickedItem.style.borderColor = '#ef4444';
+            
+            selectedPaymentDealer = {
+                code: dealerCode,
+                name: dealerName,
+                closingBalance: closingBalance,
+                gstHold: gstHold,
+                balanceDate: balanceDate,
+                index: dealerIndex
+            };
+            
+            // Show message area for this dealer
+            messageArea.style.display = 'block';
+            
+            // Automatically generate WhatsApp message
+            generatePaymentMessage(dealerIndex);
+        }
+
+        function generatePaymentMessage(dealerIndex) {
+            if (!selectedPaymentDealer || !selectedPaymentDate) {
+                alert('Please select a date and dealer');
+                return;
+            }
+            
+            // Show loading for this specific dealer
+            document.getElementById(`paymentMessageLoading_${dealerIndex}`).style.display = 'block';
+            document.getElementById(`paymentMessageContent_${dealerIndex}`).style.display = 'none';
+            document.getElementById(`paymentMessageError_${dealerIndex}`).style.display = 'none';
+            
+            fetch('/generate_payment_reminder_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    dealer_code: selectedPaymentDealer.code,
+                    date: selectedPaymentDate
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById(`paymentMessageLoading_${dealerIndex}`).style.display = 'none';
+                
+                if (data.success) {
+                    document.getElementById(`paymentMessageContent_${dealerIndex}`).style.display = 'block';
+                    document.getElementById(`paymentMessageContent_${dealerIndex}`).textContent = data.message;
+                } else {
+                    document.getElementById(`paymentMessageError_${dealerIndex}`).style.display = 'block';
+                    document.getElementById(`paymentErrorText_${dealerIndex}`).textContent = data.message || 'Failed to generate message';
+                }
+            })
+            .catch(error => {
+                document.getElementById(`paymentMessageLoading_${dealerIndex}`).style.display = 'none';
+                document.getElementById(`paymentMessageError_${dealerIndex}`).style.display = 'block';
+                document.getElementById(`paymentErrorText_${dealerIndex}`).textContent = 'Error generating message: ' + error.message;
+            });
+        }
+        
+        function copyPaymentMessage(dealerIndex) {
+            const messageElement = document.getElementById(`paymentMessageContent_${dealerIndex}`);
+            const messageText = messageElement.textContent || messageElement.innerText;
+            
+            if (!messageText || messageText.trim() === '') {
+                alert('No message to copy. Please generate a message first.');
+                return;
+            }
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(messageText).then(() => {
+                    showPaymentCopySuccess(dealerIndex);
+                }).catch(err => {
+                    console.error('Clipboard API failed:', err);
+                    fallbackPaymentCopy(messageText, dealerIndex);
+                });
+            } else {
+                fallbackPaymentCopy(messageText, dealerIndex);
+            }
+        }
+        
+        function showPaymentCopySuccess(dealerIndex) {
+            const button = document.getElementById(`paymentCopyBtn_${dealerIndex}`);
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                button.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.style.background = 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
+                }, 2000);
+            }
+        }
+        
+        function fallbackPaymentCopy(text, dealerIndex) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showPaymentCopySuccess(dealerIndex);
                 } else {
                     throw new Error('Copy command failed');
                 }

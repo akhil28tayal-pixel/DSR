@@ -1284,6 +1284,267 @@ def generate_unloading_whatsapp_message():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+# ============== Payment Reminder Routes ==============
+
+@app.route('/get_dealers_for_payment_reminder', methods=['POST'])
+def get_dealers_for_payment_reminder():
+    """Get list of dealers with outstanding balance for payment reminder"""
+    try:
+        from payment_reminder_helper import get_balance_date_for_reminder, format_date_indian
+        
+        data = request.get_json()
+        reminder_date = data.get('date')
+        
+        if not reminder_date:
+            return jsonify({'success': False, 'message': 'Date is required'})
+        
+        # Calculate balance date (4 working days before reminder date)
+        balance_date_obj, balance_date_str = get_balance_date_for_reminder(reminder_date)
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        # Get all dealers with their closing balance on the balance date
+        # We need to calculate: opening + purchase - collection - credit + debit
+        
+        # Get month_year for the balance date
+        month_year = balance_date_obj.strftime('%Y-%m')
+        
+        # Get all dealers who have any data for this month
+        cursor.execute('''
+            SELECT DISTINCT dealer_code, dealer_name
+            FROM (
+                SELECT dealer_code, dealer_name FROM sales_data WHERE strftime('%Y-%m', sale_date) = ?
+                UNION
+                SELECT dealer_code, dealer_name FROM collections WHERE strftime('%Y-%m', collection_date) = ?
+                UNION
+                SELECT dealer_code, dealer_name FROM opening_balances WHERE month_year = ?
+            )
+            ORDER BY dealer_name
+        ''', (month_year, month_year, month_year))
+        
+        all_dealers = cursor.fetchall()
+        dealers_with_balance = []
+        
+        for dealer_code, dealer_name in all_dealers:
+            # Get opening balance
+            cursor.execute('''
+                SELECT opening_balance FROM opening_balances
+                WHERE dealer_code = ? AND month_year = ?
+            ''', (dealer_code, month_year))
+            opening_row = cursor.fetchone()
+            opening = opening_row[0] if opening_row else 0
+            
+            # Get total purchases up to balance date
+            cursor.execute('''
+                SELECT SUM(total_amount) FROM sales_data
+                WHERE dealer_code = ? AND sale_date <= ?
+            ''', (dealer_code, balance_date_str))
+            purchase_row = cursor.fetchone()
+            purchase = purchase_row[0] if purchase_row and purchase_row[0] else 0
+            
+            # Get total collections up to balance date
+            cursor.execute('''
+                SELECT SUM(amount) FROM collections
+                WHERE dealer_code = ? AND collection_date <= ?
+            ''', (dealer_code, balance_date_str))
+            collection_row = cursor.fetchone()
+            collection = collection_row[0] if collection_row and collection_row[0] else 0
+            
+            # Get credit note for the month
+            cursor.execute('''
+                SELECT credit_discount, gst_hold FROM credit_discounts
+                WHERE dealer_code = ? AND month_year = ?
+            ''', (dealer_code, month_year))
+            credit_row = cursor.fetchone()
+            credit = credit_row[0] if credit_row and credit_row[0] else 0
+            gst_hold = credit_row[1] if credit_row and credit_row[1] else 0
+            
+            # Get debit note for the month
+            cursor.execute('''
+                SELECT debit_amount FROM debit_notes
+                WHERE dealer_code = ? AND month_year = ?
+            ''', (dealer_code, month_year))
+            debit_row = cursor.fetchone()
+            debit = debit_row[0] if debit_row and debit_row[0] else 0
+            
+            # Calculate closing balance
+            closing_balance = opening + purchase - collection - credit + debit
+            
+            # Only include dealers with positive closing balance (after subtracting GST hold)
+            net_balance = closing_balance - gst_hold
+            
+            if closing_balance > 0:  # Show all dealers with positive closing balance
+                dealers_with_balance.append({
+                    'dealer_code': dealer_code,
+                    'dealer_name': dealer_name,
+                    'closing_balance': round(closing_balance, 2),
+                    'gst_hold': round(gst_hold, 2),
+                    'net_balance': round(net_balance, 2),
+                    'balance_date': format_date_indian(balance_date_str)
+                })
+        
+        db.close()
+        
+        # Sort by net_balance descending (highest balance first)
+        dealers_with_balance.sort(key=lambda x: x['net_balance'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'dealers': dealers_with_balance,
+            'balance_date': format_date_indian(balance_date_str)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/generate_payment_reminder_message', methods=['POST'])
+def generate_payment_reminder_message():
+    """Generate WhatsApp payment reminder message for a dealer"""
+    try:
+        from payment_reminder_helper import get_balance_date_for_reminder, format_date_indian
+        
+        data = request.get_json()
+        dealer_code = data.get('dealer_code')
+        reminder_date = data.get('date')
+        
+        if not dealer_code or not reminder_date:
+            return jsonify({'success': False, 'message': 'Dealer code and date are required'})
+        
+        # Calculate balance date (4 working days before reminder date)
+        balance_date_obj, balance_date_str = get_balance_date_for_reminder(reminder_date)
+        
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        # Get month_year for the balance date
+        month_year = balance_date_obj.strftime('%Y-%m')
+        
+        # Get dealer name
+        cursor.execute('''
+            SELECT dealer_name FROM sales_data
+            WHERE dealer_code = ?
+            LIMIT 1
+        ''', (dealer_code,))
+        dealer_row = cursor.fetchone()
+        
+        if not dealer_row:
+            cursor.execute('''
+                SELECT dealer_name FROM opening_balances
+                WHERE dealer_code = ?
+                LIMIT 1
+            ''', (dealer_code,))
+            dealer_row = cursor.fetchone()
+        
+        dealer_name = dealer_row[0] if dealer_row else 'Unknown Dealer'
+        
+        # Get opening balance
+        cursor.execute('''
+            SELECT opening_balance FROM opening_balances
+            WHERE dealer_code = ? AND month_year = ?
+        ''', (dealer_code, month_year))
+        opening_row = cursor.fetchone()
+        opening = opening_row[0] if opening_row else 0
+        
+        # Get total purchases up to balance date
+        cursor.execute('''
+            SELECT SUM(total_amount) FROM sales_data
+            WHERE dealer_code = ? AND sale_date <= ?
+        ''', (dealer_code, balance_date_str))
+        purchase_row = cursor.fetchone()
+        purchase = purchase_row[0] if purchase_row and purchase_row[0] else 0
+        
+        # Get total collections up to balance date
+        cursor.execute('''
+            SELECT SUM(amount) FROM collections
+            WHERE dealer_code = ? AND collection_date <= ?
+        ''', (dealer_code, balance_date_str))
+        collection_row = cursor.fetchone()
+        collection = collection_row[0] if collection_row and collection_row[0] else 0
+        
+        # Get credit note and GST hold for the month
+        cursor.execute('''
+            SELECT credit_discount, gst_hold FROM credit_discounts
+            WHERE dealer_code = ? AND month_year = ?
+        ''', (dealer_code, month_year))
+        credit_row = cursor.fetchone()
+        credit = credit_row[0] if credit_row and credit_row[0] else 0
+        gst_hold = credit_row[1] if credit_row and credit_row[1] else 0
+        
+        # Get debit note for the month
+        cursor.execute('''
+            SELECT debit_amount FROM debit_notes
+            WHERE dealer_code = ? AND month_year = ?
+        ''', (dealer_code, month_year))
+        debit_row = cursor.fetchone()
+        debit = debit_row[0] if debit_row and debit_row[0] else 0
+        
+        db.close()
+        
+        # Calculate closing balance
+        closing_balance = opening + purchase - collection - credit + debit
+        
+        # Calculate net balance (closing - GST hold)
+        net_balance = closing_balance - gst_hold
+        
+        # Format amounts in Indian currency format
+        def format_amount(amount):
+            return f"₹{amount:,.2f}"
+        
+        # Build WhatsApp message
+        message_lines = []
+        message_lines.append(f"*Payment Reminder*")
+        message_lines.append("")
+        message_lines.append(f"Dear *{dealer_name}*,")
+        message_lines.append("")
+        message_lines.append(f"This is a gentle reminder regarding your outstanding balance as of *{format_date_indian(balance_date_str)}*:")
+        message_lines.append("")
+        message_lines.append("─" * 30)
+        message_lines.append("*💰 Account Summary:*")
+        message_lines.append("")
+        message_lines.append(f"Opening Balance: {format_amount(opening)}")
+        message_lines.append(f"Purchases: {format_amount(purchase)}")
+        message_lines.append(f"Collections: {format_amount(collection)}")
+        
+        if credit > 0:
+            message_lines.append(f"Credit Note: {format_amount(credit)}")
+        
+        if debit > 0:
+            message_lines.append(f"Debit Note: {format_amount(debit)}")
+        
+        message_lines.append("")
+        message_lines.append(f"*Closing Balance: {format_amount(closing_balance)}*")
+        
+        if gst_hold > 0:
+            message_lines.append("")
+            message_lines.append(f"Less: GST Hold: {format_amount(gst_hold)}")
+            message_lines.append("")
+            message_lines.append("─" * 30)
+            message_lines.append(f"*Net Amount Due: {format_amount(net_balance)}*")
+        else:
+            message_lines.append("─" * 30)
+        
+        message_lines.append("")
+        message_lines.append("Please arrange for payment at your earliest convenience.")
+        message_lines.append("")
+        message_lines.append("For any queries, please feel free to contact us.")
+        message_lines.append("")
+        message_lines.append("Thank you for your business! 🙏")
+        
+        message = '\n'.join(message_lines)
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'dealer_name': dealer_name,
+            'closing_balance': round(closing_balance, 2),
+            'gst_hold': round(gst_hold, 2),
+            'net_balance': round(net_balance, 2)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 # ============== Vehicle Details Routes ==============
 
 @app.route('/vehicle_details')
