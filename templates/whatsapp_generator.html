@@ -369,29 +369,40 @@
             <div class="tab-pane fade" id="payment-content" role="tabpanel" aria-labelledby="payment-tab">
                 <div class="row">
                     <!-- Date Selection for Payment Reminder -->
-                    <div class="col-md-4 mb-4">
+                    <div class="col-md-12 mb-4">
                         <div class="card">
                             <div class="card-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;">
-                                <i class="fas fa-calendar me-2"></i>Select Date
+                                <i class="fas fa-calendar me-2"></i>Payment Reminder
                             </div>
                             <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="paymentDate" class="form-label">Reminder Date</label>
-                                    <input type="date" class="form-control" id="paymentDate" required>
-                                    <small class="text-muted">Balance will be calculated from 4 working days before this date</small>
+                                <div class="row align-items-end">
+                                    <div class="col-md-4">
+                                        <label for="paymentDate" class="form-label">Reminder Date</label>
+                                        <input type="date" class="form-control" id="paymentDate" required>
+                                        <small class="text-muted">Balance from 4 working days before (excluding Sundays, 2nd & 4th Saturdays)</small>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <button type="button" class="btn w-100" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none;" onclick="loadPaymentDealers()">
+                                            <i class="fas fa-search me-2"></i>Load Dealers
+                                        </button>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <div id="balanceDateInfo" class="alert alert-info mb-0" style="display: none;">
+                                            <small><strong>Balance Date:</strong> <span id="balanceDateDisplay"></span></small>
+                                        </div>
+                                    </div>
                                 </div>
-                                <button type="button" class="btn w-100" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none;" onclick="loadPaymentDealers()">
-                                    <i class="fas fa-search me-2"></i>Find Dealers
-                                </button>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Dealer Selection for Payment Reminder -->
-                    <div class="col-md-8 mb-4">
+                <!-- Dealers Table -->
+                <div class="row">
+                    <div class="col-md-12">
                         <div class="card">
                             <div class="card-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;">
-                                <i class="fas fa-users me-2"></i>Select Dealer
+                                <i class="fas fa-users me-2"></i>Dealers with Outstanding Balance
                                 <span id="paymentDealerCount" class="badge bg-light text-dark ms-2" style="display: none;"></span>
                             </div>
                             <div class="card-body">
@@ -402,8 +413,25 @@
                                     <p class="mt-2">Loading dealers...</p>
                                 </div>
                                 
-                                <div id="paymentDealerList" class="row" style="display: none;">
-                                    <!-- Dealers will be loaded here -->
+                                <div id="paymentDealerTable" style="display: none;">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover table-striped">
+                                            <thead class="table-danger">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Dealer Name</th>
+                                                    <th>Dealer Code</th>
+                                                    <th class="text-end">Closing Balance (₹)</th>
+                                                    <th class="text-end">GST Hold (₹)</th>
+                                                    <th class="text-end">Payment Due (₹)</th>
+                                                    <th class="text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="paymentDealerTableBody">
+                                                <!-- Dealers will be loaded here -->
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                                 
                                 <div id="noPaymentDealers" style="display: none;">
@@ -412,6 +440,51 @@
                                         No dealers with outstanding balance found. Please choose a different date.
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Message Modal -->
+                <div class="modal fade" id="paymentMessageModal" tabindex="-1" aria-labelledby="paymentMessageModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white;">
+                                <h5 class="modal-title" id="paymentMessageModalLabel">
+                                    <i class="fab fa-whatsapp me-2"></i>Payment Reminder Message
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="modalDealerInfo" class="mb-3 p-3 bg-light border-start border-danger border-4">
+                                    <h6 class="text-danger mb-1" id="modalDealerName">Dealer Name</h6>
+                                    <small class="text-muted">Code: <span id="modalDealerCode">000000</span></small>
+                                </div>
+                                
+                                <div id="modalMessageLoading" class="text-center py-3" style="display: none;">
+                                    <div class="spinner-border text-danger" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Generating message...</p>
+                                </div>
+                                
+                                <div id="modalMessageContent" style="display: none;">
+                                    <div class="message-content p-3 bg-light border rounded" 
+                                         style="font-family: monospace; white-space: pre-wrap; border-left: 4px solid #25D366; max-height: 400px; overflow-y: auto;">
+                                        <div id="modalMessageText"></div>
+                                    </div>
+                                </div>
+                                
+                                <div id="modalMessageError" class="alert alert-danger" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <span id="modalErrorText"></span>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-success" onclick="copyModalMessage()" id="modalCopyBtn">
+                                    <i class="fas fa-copy me-1"></i>Copy Message
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1228,9 +1301,10 @@
             
             // Show loading
             document.getElementById('paymentDealerLoading').style.display = 'block';
-            document.getElementById('paymentDealerList').style.display = 'none';
+            document.getElementById('paymentDealerTable').style.display = 'none';
             document.getElementById('noPaymentDealers').style.display = 'none';
             document.getElementById('paymentDealerCount').style.display = 'none';
+            document.getElementById('balanceDateInfo').style.display = 'none';
             
             fetch('/get_dealers_for_payment_reminder', {
                 method: 'POST',
@@ -1244,7 +1318,11 @@
                 document.getElementById('paymentDealerLoading').style.display = 'none';
                 
                 if (data.success && data.dealers.length > 0) {
-                    displayPaymentDealers(data.dealers);
+                    // Show balance date
+                    document.getElementById('balanceDateDisplay').textContent = data.balance_date;
+                    document.getElementById('balanceDateInfo').style.display = 'block';
+                    
+                    displayPaymentDealersTable(data.dealers);
                 } else {
                     document.getElementById('noPaymentDealers').style.display = 'block';
                 }
@@ -1255,239 +1333,129 @@
             });
         }
 
-        function displayPaymentDealers(dealers) {
-            const dealerList = document.getElementById('paymentDealerList');
+        function displayPaymentDealersTable(dealers) {
+            const tableBody = document.getElementById('paymentDealerTableBody');
             const dealerCount = document.getElementById('paymentDealerCount');
             
-            dealerList.innerHTML = '';
+            tableBody.innerHTML = '';
             
             dealers.forEach((dealer, index) => {
-                const dealerRow = document.createElement('div');
-                dealerRow.className = 'col-12 mb-2';
-                
-                const escapedDealerName = dealer.dealer_name.replace(/'/g, "\\'").replace(/"/g, '\\"');
                 const closingBalance = parseFloat(dealer.closing_balance || 0);
                 const gstHold = parseFloat(dealer.gst_hold || 0);
                 const netBalance = closingBalance - gstHold;
-                const balanceDate = dealer.balance_date || '';
                 
-                dealerRow.innerHTML = `
-                    <div class="list-group-item list-group-item-action dealer-item p-3 border rounded payment-dealer-item" 
-                         onclick="selectPaymentDealer('${dealer.dealer_code}', '${escapedDealerName}', ${closingBalance}, ${gstHold}, '${balanceDate}', ${index})"
-                         style="cursor: pointer; transition: all 0.2s ease; border: 1px solid #dee2e6;">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div class="d-flex align-items-center">
-                                <div class="me-3">
-                                    <div class="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center" 
-                                         style="width: 40px; height: 40px; font-weight: bold;">
-                                        ${index + 1}
-                                    </div>
-                                </div>
-                                <div>
-                                    <h6 class="mb-1 text-danger fw-bold">${dealer.dealer_name}</h6>
-                                    <small class="text-muted">Code: ${dealer.dealer_code} | Balance as of: ${balanceDate}</small>
-                                </div>
-                            </div>
-                            <div class="text-end">
-                                <div class="mb-1">
-                                    <small class="text-muted">Closing: </small>
-                                    <span class="badge bg-secondary">₹${closingBalance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                                </div>
-                                <div class="mb-1">
-                                    <small class="text-muted">GST Hold: </small>
-                                    <span class="badge bg-warning text-dark">₹${gstHold.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                                </div>
-                                <div>
-                                    <small class="text-muted">Net: </small>
-                                    <span class="badge bg-danger fs-6 px-3 py-2">₹${netBalance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Message Area (Initially Hidden) -->
-                        <div id="paymentMessageArea_${index}" class="message-area mt-3" style="display: none;">
-                            <hr class="my-3">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <h6 class="mb-0 text-danger">
-                                    <i class="fab fa-whatsapp me-2"></i>WhatsApp Message
-                                </h6>
-                                <button type="button" class="btn btn-sm" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; border: none;" onclick="copyPaymentMessage(${index}); event.stopPropagation();" id="paymentCopyBtn_${index}">
-                                    <i class="fas fa-copy me-1"></i>Copy
-                                </button>
-                            </div>
-                            <div id="paymentMessageLoading_${index}" class="text-center py-3" style="display: none;">
-                                <div class="spinner-border spinner-border-sm text-danger" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <small class="text-muted ms-2">Generating message...</small>
-                            </div>
-                            <div id="paymentMessageContent_${index}" class="message-content p-3 bg-light border rounded" 
-                                 style="font-family: monospace; white-space: pre-wrap; border-left: 4px solid #25D366; display: none;">
-                                <!-- Message will appear here -->
-                            </div>
-                            <div id="paymentMessageError_${index}" class="alert alert-danger mt-2" style="display: none;">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                <span id="paymentErrorText_${index}"></span>
-                            </div>
-                        </div>
-                    </div>
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td><strong>${dealer.dealer_name}</strong></td>
+                    <td>${dealer.dealer_code}</td>
+                    <td class="text-end">${closingBalance.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="text-end">${gstHold.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="text-end"><strong class="text-danger">${netBalance.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="showPaymentMessage('${dealer.dealer_code}', '${dealer.dealer_name.replace(/'/g, "\\'")}')">
+                            <i class="fab fa-whatsapp me-1"></i>Generate Message
+                        </button>
+                    </td>
                 `;
-                dealerList.appendChild(dealerRow);
+                tableBody.appendChild(row);
             });
             
-            dealerCount.textContent = `${dealers.length} dealers found`;
+            dealerCount.textContent = `${dealers.length} dealers`;
             dealerCount.style.display = 'inline-block';
-            dealerList.style.display = 'block';
+            document.getElementById('paymentDealerTable').style.display = 'block';
         }
 
-        function selectPaymentDealer(dealerCode, dealerName, closingBalance, gstHold, balanceDate, dealerIndex) {
-            const messageArea = document.getElementById(`paymentMessageArea_${dealerIndex}`);
-            const clickedItem = event.currentTarget;
+        function showPaymentMessage(dealerCode, dealerName) {
+            // Set dealer info in modal
+            document.getElementById('modalDealerName').textContent = dealerName;
+            document.getElementById('modalDealerCode').textContent = dealerCode;
             
-            // Check if this dealer is already selected and message is visible
-            if (selectedPaymentDealer && selectedPaymentDealer.index === dealerIndex && messageArea.style.display === 'block') {
-                // Hide the message area and deselect
-                messageArea.style.display = 'none';
-                clickedItem.classList.remove('selected');
-                clickedItem.style.backgroundColor = '';
-                clickedItem.style.borderColor = '#dee2e6';
-                selectedPaymentDealer = null;
-                return;
-            }
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('paymentMessageModal'));
+            modal.show();
             
-            // Hide all other message areas
-            document.querySelectorAll('#payment-content .message-area').forEach(area => {
-                area.style.display = 'none';
-            });
+            // Show loading
+            document.getElementById('modalMessageLoading').style.display = 'block';
+            document.getElementById('modalMessageContent').style.display = 'none';
+            document.getElementById('modalMessageError').style.display = 'none';
             
-            // Remove previous selection
-            document.querySelectorAll('.payment-dealer-item').forEach(item => {
-                item.classList.remove('selected');
-                item.style.backgroundColor = '';
-                item.style.borderColor = '#dee2e6';
-            });
-            
-            // Add selection to clicked item
-            clickedItem.classList.add('selected');
-            clickedItem.style.backgroundColor = '#fee2e2';
-            clickedItem.style.borderColor = '#ef4444';
-            
-            selectedPaymentDealer = {
-                code: dealerCode,
-                name: dealerName,
-                closingBalance: closingBalance,
-                gstHold: gstHold,
-                balanceDate: balanceDate,
-                index: dealerIndex
-            };
-            
-            // Show message area for this dealer
-            messageArea.style.display = 'block';
-            
-            // Automatically generate WhatsApp message
-            generatePaymentMessage(dealerIndex);
-        }
-
-        function generatePaymentMessage(dealerIndex) {
-            if (!selectedPaymentDealer || !selectedPaymentDate) {
-                alert('Please select a date and dealer');
-                return;
-            }
-            
-            // Show loading for this specific dealer
-            document.getElementById(`paymentMessageLoading_${dealerIndex}`).style.display = 'block';
-            document.getElementById(`paymentMessageContent_${dealerIndex}`).style.display = 'none';
-            document.getElementById(`paymentMessageError_${dealerIndex}`).style.display = 'none';
-            
+            // Generate message
             fetch('/generate_payment_reminder_message', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    dealer_code: selectedPaymentDealer.code,
+                    dealer_code: dealerCode,
                     date: selectedPaymentDate
                 })
             })
             .then(response => response.json())
             .then(data => {
-                document.getElementById(`paymentMessageLoading_${dealerIndex}`).style.display = 'none';
+                document.getElementById('modalMessageLoading').style.display = 'none';
                 
                 if (data.success) {
-                    document.getElementById(`paymentMessageContent_${dealerIndex}`).style.display = 'block';
-                    document.getElementById(`paymentMessageContent_${dealerIndex}`).textContent = data.message;
+                    document.getElementById('modalMessageText').textContent = data.message;
+                    document.getElementById('modalMessageContent').style.display = 'block';
                 } else {
-                    document.getElementById(`paymentMessageError_${dealerIndex}`).style.display = 'block';
-                    document.getElementById(`paymentErrorText_${dealerIndex}`).textContent = data.message || 'Failed to generate message';
+                    document.getElementById('modalErrorText').textContent = data.message || 'Failed to generate message';
+                    document.getElementById('modalMessageError').style.display = 'block';
                 }
             })
             .catch(error => {
-                document.getElementById(`paymentMessageLoading_${dealerIndex}`).style.display = 'none';
-                document.getElementById(`paymentMessageError_${dealerIndex}`).style.display = 'block';
-                document.getElementById(`paymentErrorText_${dealerIndex}`).textContent = 'Error generating message: ' + error.message;
+                document.getElementById('modalMessageLoading').style.display = 'none';
+                document.getElementById('modalErrorText').textContent = 'Error: ' + error.message;
+                document.getElementById('modalMessageError').style.display = 'block';
             });
         }
-        
-        function copyPaymentMessage(dealerIndex) {
-            const messageElement = document.getElementById(`paymentMessageContent_${dealerIndex}`);
-            const messageText = messageElement.textContent || messageElement.innerText;
+
+        function copyModalMessage() {
+            const messageText = document.getElementById('modalMessageText').textContent;
             
             if (!messageText || messageText.trim() === '') {
-                alert('No message to copy. Please generate a message first.');
+                alert('No message to copy');
                 return;
             }
             
-            // Try modern clipboard API first
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(messageText).then(() => {
-                    showPaymentCopySuccess(dealerIndex);
+                    const btn = document.getElementById('modalCopyBtn');
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-info');
+                    
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.classList.remove('btn-info');
+                        btn.classList.add('btn-success');
+                    }, 2000);
                 }).catch(err => {
-                    console.error('Clipboard API failed:', err);
-                    fallbackPaymentCopy(messageText, dealerIndex);
+                    console.error('Copy failed:', err);
+                    alert('Copy failed. Please try manually.');
                 });
             } else {
-                fallbackPaymentCopy(messageText, dealerIndex);
-            }
-        }
-        
-        function showPaymentCopySuccess(dealerIndex) {
-            const button = document.getElementById(`paymentCopyBtn_${dealerIndex}`);
-            if (button) {
-                const originalText = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
-                button.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+                // Fallback
+                const textArea = document.createElement('textarea');
+                textArea.value = messageText;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
                 
-                setTimeout(() => {
-                    button.innerHTML = originalText;
-                    button.style.background = 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
-                }, 2000);
-            }
-        }
-        
-        function fallbackPaymentCopy(text, dealerIndex) {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            
-            try {
-                const successful = document.execCommand('copy');
-                if (successful) {
-                    showPaymentCopySuccess(dealerIndex);
-                } else {
-                    throw new Error('Copy command failed');
+                try {
+                    document.execCommand('copy');
+                    alert('Message copied to clipboard!');
+                } catch (err) {
+                    alert('Copy failed. Please select and copy manually.');
+                } finally {
+                    document.body.removeChild(textArea);
                 }
-            } catch (err) {
-                console.error('Fallback copy failed:', err);
-                alert('Copy failed. Please select and copy the message manually.');
-            } finally {
-                document.body.removeChild(textArea);
             }
         }
+
     </script>
 </body>
 </html>
