@@ -4624,6 +4624,87 @@ def upload_dealer_statement():
             import PyPDF2
             import re
             
+            def _parse_amount_token(token: str):
+                try:
+                    return float(token.replace(',', ''))
+                except Exception:
+                    return None
+
+            def _parse_crn_with_pdfplumber(pdf_path: str):
+                try:
+                    import pdfplumber
+                except Exception:
+                    return None
+
+                amount_re = re.compile(r'^\d{1,3}(?:,\d{3})*\.\d{2}$|^\d+\.\d{2}$')
+                date_re = re.compile(r'^\d{2}\.\d{2}\.\d{4}$')
+                doc_re = re.compile(r'^(DL|RJ)\d{10,}$')
+                crn_re = re.compile(r'^CRN[-/A-Za-z0-9]{4,}$')
+
+                total = 0.0
+                entries = []
+                seen = set()
+
+                with pdfplumber.open(pdf_path) as pdf:
+                    for page in pdf.pages:
+                        words = page.extract_words(use_text_flow=True)
+                        if not words:
+                            continue
+
+                        # Group words by visual line using the 'top' coordinate.
+                        lines_map = {}
+                        for w in words:
+                            top_key = int(round(float(w.get('top', 0)) / 2.0) * 2)
+                            lines_map.setdefault(top_key, []).append(w)
+
+                        for _, line_words in sorted(lines_map.items(), key=lambda x: x[0]):
+                            line_words = sorted(line_words, key=lambda w: float(w.get('x0', 0)))
+                            tokens = [w.get('text', '').strip() for w in line_words if w.get('text', '').strip()]
+                            if not tokens:
+                                continue
+
+                            # Skip header lines
+                            if 'INV/CRN' in tokens or ('Posting' in tokens and 'Doc' in tokens and 'No.' in tokens):
+                                continue
+
+                            has_crn = any(t == 'CRN' or crn_re.match(t) for t in tokens) or any('CRN-' in t for t in tokens)
+                            if not has_crn:
+                                continue
+
+                            posting_date = next((t for t in tokens if date_re.match(t)), None)
+                            if not posting_date:
+                                continue
+
+                            doc_no = next((t for t in tokens if doc_re.match(t)), None)
+
+                            amount_tokens = [t for t in tokens if amount_re.match(t)]
+                            if len(amount_tokens) < 2:
+                                continue
+
+                            # In these statements, CRN rows usually have Credit and Balance as the last two amounts.
+                            credit_token = amount_tokens[-2]
+                            balance_token = amount_tokens[-1]
+                            credit = _parse_amount_token(credit_token)
+                            balance = _parse_amount_token(balance_token)
+                            if credit is None or balance is None:
+                                continue
+
+                            if not (100 < credit < 10000000):
+                                continue
+
+                            dedup_key = f"{posting_date}|{doc_no or ''}|{credit_token}|{balance_token}"
+                            if dedup_key in seen:
+                                continue
+                            seen.add(dedup_key)
+
+                            total += credit
+                            entries.append({'line': ' '.join(tokens)[:100], 'amount': credit})
+
+                return {
+                    'total': round(total, 2),
+                    'entries': entries
+                }
+            
             pdf = PyPDF2.PdfReader(open(filepath, 'rb'))
             full_text = '\n'.join([page.extract_text() for page in pdf.pages])
             
@@ -4655,52 +4736,59 @@ def upload_dealer_statement():
             # Extract CRN (Credit Note) entries
             total_crn = 0
             crn_entries = []
-            seen_crn_keys = set()
+
+            crn_plumber = _parse_crn_with_pdfplumber(filepath)
+            if crn_plumber is not None:
+                total_crn = crn_plumber['total']
+                crn_entries = crn_plumber['entries']
+            else:
+                seen_crn_keys = set()
             
             # Pattern for CRN entries with amounts in Credit column
             # CRN entries have amounts that reduce the balance (credits)
             lines = full_text.split('\n')
-            for i, line in enumerate(lines):
-                # Skip header lines containing 'INV/CRN'
-                if 'CRN' in line and 'INV/CRN' not in line:
-                    # Get context around the line (CRN info spans multiple lines)
-                    context = ' '.join(lines[max(0,i-1):min(len(lines),i+6)])
+            if crn_plumber is None:
+                for i, line in enumerate(lines):
+                    # Skip header lines containing 'INV/CRN'
+                    if 'CRN' in line and 'INV/CRN' not in line:
+                        # Get context around the line (CRN info spans multiple lines)
+                        context = ' '.join(lines[max(0,i-1):min(len(lines),i+6)])
 
-                    # Try to extract a CRN reference so we don't double count when the
-                    # same CRN spans multiple wrapped lines in the extracted PDF text.
-                    # Fallback to a normalized context key.
-                    crn_ref_match = re.search(r'\bCRN[-/A-Za-z0-9]{4,}\b', context)
-                    if crn_ref_match:
-                        crn_key = crn_ref_match.group(0).strip()
-                    else:
-                        crn_key = re.sub(r'\s+', ' ', context.strip())[:200]
+                        # Try to extract a CRN reference so we don't double count when the
+                        # same CRN spans multiple wrapped lines in the extracted PDF text.
+                        # Fallback to a normalized context key.
+                        crn_ref_match = re.search(r'\bCRN[-/A-Za-z0-9]{4,}\b', context)
+                        if crn_ref_match:
+                            crn_key = crn_ref_match.group(0).strip()
+                        else:
+                            crn_key = re.sub(r'\s+', ' ', context.strip())[:200]
 
-                    if crn_key in seen_crn_keys:
-                        continue
-
-                    # Look for amount pairs - credit amount followed by running balance.
-                    # Choose a plausible credit amount to avoid picking balances.
-                    amount_pairs = re.findall(r'(\d+[\d,]*\.\d{2})\s+(\d+[\d,]*\.\d{2})', context)
-                    candidate_amount = None
-
-                    for a_str, b_str in amount_pairs:
-                        try:
-                            a = float(a_str.replace(',', ''))
-                            b = float(b_str.replace(',', ''))
-                        except Exception:
+                        if crn_key in seen_crn_keys:
                             continue
 
-                        # Credit amount should generally be smaller than the running balance
-                        # and within a sane band. (Band chosen to avoid small noise numbers.)
-                        if 100 < a < 10000000 and b != a:
-                            if b > a:
-                                candidate_amount = a
-                                break
+                        # Look for amount pairs - credit amount followed by running balance.
+                        # Choose a plausible credit amount to avoid picking balances.
+                        amount_pairs = re.findall(r'(\d+[\d,]*\.\d{2})\s+(\d+[\d,]*\.\d{2})', context)
+                        candidate_amount = None
 
-                    if candidate_amount is not None:
-                        seen_crn_keys.add(crn_key)
-                        total_crn += candidate_amount
-                        crn_entries.append({'line': line[:100], 'amount': candidate_amount})
+                        for a_str, b_str in amount_pairs:
+                            try:
+                                a = float(a_str.replace(',', ''))
+                                b = float(b_str.replace(',', ''))
+                            except Exception:
+                                continue
+
+                            # Credit amount should generally be smaller than the running balance
+                            # and within a sane band. (Band chosen to avoid small noise numbers.)
+                            if 100 < a < 10000000 and b != a:
+                                if b > a:
+                                    candidate_amount = a
+                                    break
+
+                        if candidate_amount is not None:
+                            seen_crn_keys.add(crn_key)
+                            total_crn += candidate_amount
+                            crn_entries.append({'line': line[:100], 'amount': candidate_amount})
             
             # Extract DRN (Debit Note) entries
             total_drn = 0
