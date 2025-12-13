@@ -4655,6 +4655,7 @@ def upload_dealer_statement():
             # Extract CRN (Credit Note) entries
             total_crn = 0
             crn_entries = []
+            seen_crn_keys = set()
             
             # Pattern for CRN entries with amounts in Credit column
             # CRN entries have amounts that reduce the balance (credits)
@@ -4664,19 +4665,42 @@ def upload_dealer_statement():
                 if 'CRN' in line and 'INV/CRN' not in line:
                     # Get context around the line (CRN info spans multiple lines)
                     context = ' '.join(lines[max(0,i-1):min(len(lines),i+6)])
-                    
-                    # Look for amount pairs - credit amount followed by running balance
-                    amounts = re.findall(r'(\d+\.\d{2})\s+(\d+\.\d{2})', context)
-                    
-                    if amounts:
-                        # Find the credit amount (typically between 100 and 500000)
-                        for amt_pair in amounts:
-                            amt = float(amt_pair[0])
-                            # Filter reasonable CRN amounts
-                            if 100 < amt < 500000:
-                                total_crn += amt
-                                crn_entries.append({'line': line[:100], 'amount': amt})
+
+                    # Try to extract a CRN reference so we don't double count when the
+                    # same CRN spans multiple wrapped lines in the extracted PDF text.
+                    # Fallback to a normalized context key.
+                    crn_ref_match = re.search(r'\bCRN[-/A-Za-z0-9]{4,}\b', context)
+                    if crn_ref_match:
+                        crn_key = crn_ref_match.group(0).strip()
+                    else:
+                        crn_key = re.sub(r'\s+', ' ', context.strip())[:200]
+
+                    if crn_key in seen_crn_keys:
+                        continue
+
+                    # Look for amount pairs - credit amount followed by running balance.
+                    # Choose a plausible credit amount to avoid picking balances.
+                    amount_pairs = re.findall(r'(\d+[\d,]*\.\d{2})\s+(\d+[\d,]*\.\d{2})', context)
+                    candidate_amount = None
+
+                    for a_str, b_str in amount_pairs:
+                        try:
+                            a = float(a_str.replace(',', ''))
+                            b = float(b_str.replace(',', ''))
+                        except Exception:
+                            continue
+
+                        # Credit amount should generally be smaller than the running balance
+                        # and within a sane band. (Band chosen to avoid small noise numbers.)
+                        if 100 < a < 10000000 and b != a:
+                            if b > a:
+                                candidate_amount = a
                                 break
+
+                    if candidate_amount is not None:
+                        seen_crn_keys.add(crn_key)
+                        total_crn += candidate_amount
+                        crn_entries.append({'line': line[:100], 'amount': candidate_amount})
             
             # Extract DRN (Debit Note) entries
             total_drn = 0
