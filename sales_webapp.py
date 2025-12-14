@@ -3186,6 +3186,89 @@ def get_consolidated_vehicles():
         # Create a set of actual truck numbers billed today (for checking if a truck is billed today)
         actual_trucks_billed_today = set(td['truck_number'] for td in trucks_today.values())
         
+        # Add cards for vehicles billed earlier in the current month (not today) that still have pending material
+        # Get vehicles billed earlier in the month
+        cursor.execute('''
+            SELECT DISTINCT truck_number
+            FROM sales_data
+            WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
+        ''', (month_start, selected_date))
+        earlier_billed_trucks = [row[0] for row in cursor.fetchall()]
+        
+        for truck_number in earlier_billed_trucks:
+            if truck_number not in actual_trucks_billed_today:
+                # Calculate pending balance for this truck
+                opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
+                opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
+                opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
+                
+                # Get current month's billing (up to selected date)
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                           COALESCE(SUM(opc_quantity), 0)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                month_billed = cursor.fetchone()
+                
+                # Get current month's other_dealers_billing
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                           COALESCE(SUM(opc_quantity), 0)
+                    FROM other_dealers_billing
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                month_other_billed = cursor.fetchone()
+                
+                # Get current month's unloading (up to selected date)
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
+                           COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                month_unloaded = cursor.fetchone()
+                
+                # Calculate pending balance
+                pending_ppc = opening_ppc + (month_billed[0] or 0) + (month_other_billed[0] or 0) - (month_unloaded[0] or 0)
+                pending_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - (month_unloaded[1] or 0)
+                pending_opc = opening_opc + (month_billed[2] or 0) + (month_other_billed[2] or 0) - (month_unloaded[2] or 0)
+                
+                # Only add if there's positive pending material
+                if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
+                    # Get the most recent billing info for this truck
+                    cursor.execute('''
+                        SELECT sale_date, dealer_code, dealer_name, plant_depot
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                        ORDER BY sale_date DESC
+                        LIMIT 1
+                    ''', (truck_number, month_start, selected_date))
+                    recent_billing = cursor.fetchone()
+                    
+                    if recent_billing:
+                        billing_date = recent_billing[0]
+                        dealer_code = recent_billing[1]
+                        plant_depot = recent_billing[3] or 'PLANT'
+                        
+                        card_key = f"{truck_number}_{plant_depot}_pending"
+                        trucks_today[card_key] = {
+                            'truck_number': truck_number,
+                            'card_key': card_key,
+                            'plant_depot': plant_depot,
+                            'invoices': [],
+                            'dealer_codes': [dealer_code] if dealer_code else [],
+                            'total_ppc': 0,
+                            'total_premium': 0,
+                            'total_opc': 0,
+                            'total_quantity': 0,
+                            'total_value': 0,
+                            'billing_date': billing_date,
+                            'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
+                            'other_billing': [],
+                            'from_earlier_date': True
+                        }
+        
         # Add other_billing quantities to truck totals
         for truck_number, truck_data in trucks_today.items():
             other_billings = truck_data.get('other_billing', [])
