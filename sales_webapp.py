@@ -4630,89 +4630,87 @@ def get_dealer_financial_balance():
             if dealer_code in dealers_map:
                 dealers_map[dealer_code]['collection'] = row[1] or 0
         
-        # Check if manual opening balances exist for this month
-        cursor.execute('SELECT COUNT(*) FROM opening_balances WHERE month_year = ?', (month_year,))
-        has_manual_opening = cursor.fetchone()[0] > 0
+        # Get manual opening balances for this month (if any)
+        manual_opening = {}
+        cursor.execute('''
+            SELECT dealer_code, opening_balance
+            FROM opening_balances
+            WHERE month_year = ?
+        ''', (month_year,))
+        for row in cursor.fetchall():
+            manual_opening[str(row[0])] = row[1] or 0
         
-        if has_manual_opening:
-            # Get opening balances from table
+        # Always calculate previous month's closing for dealers without manual opening
+        # Get previous month's opening balances
+        cursor.execute('''
+            SELECT dealer_code, opening_balance
+            FROM opening_balances
+            WHERE month_year = ?
+        ''', (prev_month_year,))
+        
+        prev_opening = {}
+        for row in cursor.fetchall():
+            prev_opening[str(row[0])] = row[1] or 0
+        
+        # Get previous month's sales
+        cursor.execute('''
+            SELECT dealer_code, SUM(total_purchase_value)
+            FROM sales_data
+            WHERE sale_date >= ? AND sale_date < ?
+            GROUP BY dealer_code
+        ''', (prev_month_start, month_start))
+        
+        prev_sales = {}
+        for row in cursor.fetchall():
+            prev_sales[str(row[0])] = row[1] or 0
+        
+        # Get previous month's collections
+        cursor.execute('''
+            SELECT dealer_code, SUM(amount)
+            FROM collections_data
+            WHERE posting_date >= ? AND posting_date < ?
+            GROUP BY dealer_code
+        ''', (prev_month_start, month_start))
+        
+        prev_collections = {}
+        for row in cursor.fetchall():
+            prev_collections[str(row[0])] = row[1] or 0
+        
+        # Get previous month's credit notes
+        prev_credits = {}
+        try:
             cursor.execute('''
-                SELECT dealer_code, opening_balance
-                FROM opening_balances
+                SELECT dealer_code, SUM(credit_discount)
+                FROM credit_discounts
                 WHERE month_year = ?
-            ''', (month_year,))
-            
-            for row in cursor.fetchall():
-                dealer_code = str(row[0])
-                if dealer_code in dealers_map:
-                    dealers_map[dealer_code]['opening_balance'] = row[1] or 0
-        else:
-            # Auto-calculate from previous month's closing
-            # Get previous month's opening balances
-            cursor.execute('''
-                SELECT dealer_code, opening_balance
-                FROM opening_balances
-                WHERE month_year = ?
+                GROUP BY dealer_code
             ''', (prev_month_year,))
-            
-            prev_opening = {}
             for row in cursor.fetchall():
-                prev_opening[str(row[0])] = row[1] or 0
-            
-            # Get previous month's sales
+                prev_credits[str(row[0])] = row[1] or 0
+        except:
+            pass
+        
+        # Get previous month's debit notes
+        prev_debits = {}
+        try:
             cursor.execute('''
-                SELECT dealer_code, SUM(total_purchase_value)
-                FROM sales_data
-                WHERE sale_date >= ? AND sale_date < ?
+                SELECT dealer_code, SUM(debit_amount)
+                FROM debit_notes
+                WHERE month_year = ?
                 GROUP BY dealer_code
-            ''', (prev_month_start, month_start))
-            
-            prev_sales = {}
+            ''', (prev_month_year,))
             for row in cursor.fetchall():
-                prev_sales[str(row[0])] = row[1] or 0
-            
-            # Get previous month's collections
-            cursor.execute('''
-                SELECT dealer_code, SUM(amount)
-                FROM collections_data
-                WHERE posting_date >= ? AND posting_date < ?
-                GROUP BY dealer_code
-            ''', (prev_month_start, month_start))
-            
-            prev_collections = {}
-            for row in cursor.fetchall():
-                prev_collections[str(row[0])] = row[1] or 0
-            
-            # Get previous month's credit notes
-            prev_credits = {}
-            try:
-                cursor.execute('''
-                    SELECT dealer_code, SUM(credit_discount)
-                    FROM credit_discounts
-                    WHERE month_year = ?
-                    GROUP BY dealer_code
-                ''', (prev_month_year,))
-                for row in cursor.fetchall():
-                    prev_credits[str(row[0])] = row[1] or 0
-            except:
-                pass
-            
-            # Get previous month's debit notes
-            prev_debits = {}
-            try:
-                cursor.execute('''
-                    SELECT dealer_code, SUM(debit_amount)
-                    FROM debit_notes
-                    WHERE month_year = ?
-                    GROUP BY dealer_code
-                ''', (prev_month_year,))
-                for row in cursor.fetchall():
-                    prev_debits[str(row[0])] = row[1] or 0
-            except:
-                pass
-            
-            # Calculate opening balance = prev_opening + prev_sales - prev_collections - prev_credits + prev_debits
-            for dealer_code in dealers_map:
+                prev_debits[str(row[0])] = row[1] or 0
+        except:
+            pass
+        
+        # Set opening balance: use manual if exists, otherwise calculate from previous month
+        for dealer_code in dealers_map:
+            if dealer_code in manual_opening:
+                # Use manual opening balance
+                dealers_map[dealer_code]['opening_balance'] = manual_opening[dealer_code]
+            else:
+                # Calculate from previous month's closing
                 opening = prev_opening.get(dealer_code, 0)
                 sales = prev_sales.get(dealer_code, 0)
                 collections = prev_collections.get(dealer_code, 0)
