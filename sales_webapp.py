@@ -4962,7 +4962,11 @@ def upload_dealer_statement():
 
                             # Determine whether this visual line contains a CRN marker and/or amounts.
                             line_amount_tokens = [t for t in tokens if amount_re.match(t)]
-                            line_has_crn = (crn_in_line is not None or any('CRN-' in t for t in tokens) or any(t == 'CRN' for t in tokens))
+                            # Only consider it a CRN if it explicitly starts with "CRN" pattern
+                            # Exclude lines that contain invoice patterns (INV, Invoice, etc.)
+                            line_text = ' '.join(tokens).upper()
+                            is_invoice_line = 'INV' in line_text or 'INVOICE' in line_text or 'BILLING' in line_text
+                            line_has_crn = not is_invoice_line and (crn_in_line is not None or any('CRN-' in t.upper() for t in tokens) or any(t.upper() == 'CRN' for t in tokens))
 
                             # Some PDFs place the CRN marker on one line, and the amounts on the next line.
                             # If we see a CRN marker but no amounts, carry a pending flag forward.
@@ -4988,8 +4992,8 @@ def upload_dealer_statement():
                             if current.get('doc_no') is None and doc_in_line:
                                 current['doc_no'] = doc_in_line
 
-                            if not current.get('has_crn'):
-                                current['has_crn'] = any(t == 'CRN' or crn_re.match(t) for t in tokens) or any('CRN-' in t for t in tokens) or any(crn_any_re.search(t) for t in tokens)
+                            if not current.get('has_crn') and not is_invoice_line:
+                                current['has_crn'] = any(t.upper() == 'CRN' or crn_re.match(t) for t in tokens) or any('CRN-' in t.upper() for t in tokens) or any(crn_any_re.search(t) for t in tokens)
 
                             current['amount_tokens'].extend(line_amount_tokens)
                             if len(current.get('preview', '')) < 200:
