@@ -3237,6 +3237,7 @@ def get_consolidated_vehicles():
                 # Only add if there's positive pending material
                 if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
                     # Get all billing info for this truck in current month (sorted by date ASC for FIFO)
+                    # Include both sales_data and other_dealers_billing
                     cursor.execute('''
                         SELECT invoice_number, dealer_code, dealer_name, plant_depot, sale_date,
                                ppc_quantity, premium_quantity, opc_quantity, total_quantity,
@@ -3244,8 +3245,15 @@ def get_consolidated_vehicles():
                                plant_description
                         FROM sales_data
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                        UNION ALL
+                        SELECT 'OTHER' as invoice_number, '' as dealer_code, dealer_name, 'DEPOT' as plant_depot, sale_date,
+                               ppc_quantity, premium_quantity, opc_quantity, total_quantity,
+                               0 as ppc_purchase_value, 0 as premium_purchase_value, 0 as opc_purchase_value, total_purchase_value,
+                               '' as plant_description
+                        FROM other_dealers_billing
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                         ORDER BY sale_date ASC
-                    ''', (truck_number, month_start, selected_date))
+                    ''', (truck_number, month_start, selected_date, truck_number, month_start, selected_date))
                     billing_rows = cursor.fetchall()
                     
                     if billing_rows:
