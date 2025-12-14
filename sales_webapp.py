@@ -2918,6 +2918,40 @@ def get_consolidated_vehicles():
             trucks_today[card_key]['total_quantity'] += total_qty
             trucks_today[card_key]['total_value'] += row[11] or 0
         
+        # Add cards for trucks that only have other_dealers_billing on selected date (no sales_data)
+        for truck_number, other_billings in other_billing_map.items():
+            # Check if this truck already has a card from sales_data
+            truck_has_card = any(truck_number == td['truck_number'] for td in trucks_today.values())
+            if not truck_has_card and other_billings:
+                # Create a card for this truck based on other_dealers_billing
+                for ob in other_billings:
+                    plant_depot = ob.get('plant_depot', 'PLANT') or 'PLANT'
+                    card_key = f"{truck_number}_{plant_depot}"
+                    
+                    if card_key not in trucks_today:
+                        trucks_today[card_key] = {
+                            'truck_number': truck_number,
+                            'card_key': card_key,
+                            'plant_depot': plant_depot,
+                            'invoices': [],
+                            'dealer_codes': set(),
+                            'total_ppc': 0,
+                            'total_premium': 0,
+                            'total_opc': 0,
+                            'total_quantity': 0,
+                            'total_value': 0,
+                            'billing_date': selected_date,
+                            'unloading_details': unloading_map.get(truck_number, []),
+                            'other_billing': other_billings
+                        }
+                    
+                    # Add totals from other_dealers_billing
+                    trucks_today[card_key]['total_ppc'] += ob.get('ppc_quantity', 0)
+                    trucks_today[card_key]['total_premium'] += ob.get('premium_quantity', 0)
+                    trucks_today[card_key]['total_opc'] += ob.get('opc_quantity', 0)
+                    trucks_today[card_key]['total_quantity'] += ob.get('total_quantity', 0)
+                    trucks_today[card_key]['total_value'] += ob.get('total_value', 0)
+        
         # Assign unloading details to cards
         # For trucks with only one card (either PLANT or DEPOT), show all unloading
         # For trucks with multiple cards (both PLANT and DEPOT), filter by dealer_code
