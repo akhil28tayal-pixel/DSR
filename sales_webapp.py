@@ -3314,7 +3314,8 @@ def get_consolidated_vehicles():
                             recent = pending_invoices[-1]
                             billing_date = recent['sale_date']
                             dealer_code = recent['dealer_code']
-                            plant_depot = recent['plant_depot'] or 'PLANT'
+                            # Use PLANT if any invoice is from PLANT, otherwise use the last invoice's plant_depot
+                            plant_depot = 'PLANT' if any(inv['plant_depot'] == 'PLANT' for inv in pending_invoices) else (recent['plant_depot'] or 'PLANT')
                             
                             dealer_codes_set = set(inv['dealer_code'] for inv in pending_invoices if inv['dealer_code'])
                             total_ppc = sum(inv['ppc_quantity'] for inv in pending_invoices)
