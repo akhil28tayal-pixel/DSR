@@ -1153,6 +1153,10 @@
                 }
             });
             
+            // Get credit notes and debit notes maps
+            const creditNotesMap = data.credit_notes || {};
+            const debitNotesMap = data.debit_notes || {};
+            
             // Generate table rows
             let totalOpeningBalance = 0;
             let totalDailySales = 0;
@@ -1179,9 +1183,12 @@
                 const openingBalance = openingBalanceMap[dealerCode] || 0;
                 const todaysCollections = dailyCollectionsMap[dealerCode] || 0;
                 const cumulativeCollections = cumulativeCollectionsMap[dealerCode] || 0;
+                const creditNote = creditNotesMap[dealerCode] || 0;
+                const debitNote = debitNotesMap[dealerCode] || 0;
                 
-                // Calculate closing balance
-                const closingBalance = openingBalance + (cumulativeSale.total_purchase_value || 0) - cumulativeCollections;
+                // Calculate closing balance (same as financial balance page)
+                // closing = opening + purchase - collection - credit_note + debit_note
+                const closingBalance = openingBalance + (cumulativeSale.total_purchase_value || 0) - cumulativeCollections - creditNote + debitNote;
                 
                 // Add to totals
                 totalOpeningBalance += openingBalance;

@@ -874,6 +874,32 @@ def get_report():
                 'opening_balance': round(opening_balances_map.get(key, 0), 2)
             })
         
+        # Get credit notes for the month (cumulative)
+        credit_notes = {}
+        try:
+            cursor.execute('''
+                SELECT dealer_code, credit_discount
+                FROM credit_discounts
+                WHERE month_year = ?
+            ''', (month_year,))
+            for row in cursor.fetchall():
+                credit_notes[str(row[0])] = row[1] or 0
+        except:
+            pass
+        
+        # Get debit notes for the month (cumulative)
+        debit_notes = {}
+        try:
+            cursor.execute('''
+                SELECT dealer_code, debit_amount
+                FROM debit_notes
+                WHERE month_year = ?
+            ''', (month_year,))
+            for row in cursor.fetchall():
+                debit_notes[str(row[0])] = row[1] or 0
+        except:
+            pass
+        
         db.close()
         
         return jsonify({
@@ -883,6 +909,8 @@ def get_report():
             'cumulative_sales': cumulative_sales,
             'cumulative_collections': cumulative_collections,
             'opening_balances': opening_balances,
+            'credit_notes': credit_notes,
+            'debit_notes': debit_notes,
             'total_sales': total_sales,
             'total_collections': total_collections,
             'selected_date': selected_date
