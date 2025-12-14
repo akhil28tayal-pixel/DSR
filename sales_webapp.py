@@ -3246,7 +3246,9 @@ def get_consolidated_vehicles():
                         FROM sales_data
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                         UNION ALL
-                        SELECT 'OTHER' as invoice_number, '' as dealer_code, dealer_name, 'DEPOT' as plant_depot, sale_date,
+                        SELECT 'OTHER' as invoice_number, '' as dealer_code, dealer_name, 
+                               CASE WHEN plant_depot = 'Plant' OR plant_depot = 'PLANT' THEN 'PLANT' ELSE 'DEPOT' END as plant_depot, 
+                               sale_date,
                                ppc_quantity, premium_quantity, opc_quantity, total_quantity,
                                0 as ppc_purchase_value, 0 as premium_purchase_value, 0 as opc_purchase_value, total_purchase_value,
                                '' as plant_description
