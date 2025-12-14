@@ -1518,13 +1518,25 @@ def generate_payment_reminder_message():
         debit_row = cursor.fetchone()
         debit = debit_row[0] if debit_row and debit_row[0] else 0
         
+        # Get collections made AFTER balance_date up to (but not including) reminder_date
+        # These will be subtracted from closing balance to get payment due
+        cursor.execute('''
+            SELECT SUM(amount) FROM collections_data
+            WHERE dealer_code = ? AND posting_date > ? AND posting_date < ?
+        ''', (dealer_code, balance_date_str, reminder_date))
+        subsequent_collections_row = cursor.fetchone()
+        subsequent_collections = subsequent_collections_row[0] if subsequent_collections_row and subsequent_collections_row[0] else 0
+        
         db.close()
         
-        # Calculate closing balance
+        # Calculate closing balance as of balance_date
         closing_balance = opening + purchase - collection - credit + debit
         
-        # Calculate net balance (closing - GST hold)
-        net_balance = closing_balance - gst_hold
+        # Calculate payment due = closing balance - subsequent collections
+        payment_due = closing_balance - subsequent_collections
+        
+        # Calculate net payment due (payment due - GST hold)
+        net_payment_due = payment_due - gst_hold
         
         # Format amounts in Indian currency format
         def format_amount(amount):
@@ -1532,15 +1544,16 @@ def generate_payment_reminder_message():
         
         # Build WhatsApp message
         message_lines = []
-        message_lines.append(f"*Payment Reminder*")
+        message_lines.append(f"*Payment Reminder for {format_date_indian(reminder_date)}*")
         message_lines.append("")
         message_lines.append(f"Dear *{dealer_name}*,")
         message_lines.append("")
-        message_lines.append(f"This is a gentle reminder regarding your outstanding balance as of *{format_date_indian(balance_date_str)}*:")
+        message_lines.append(f"This is a gentle reminder regarding your outstanding balance.")
         message_lines.append("")
         message_lines.append("─" * 30)
         message_lines.append("*💰 Account Summary:*")
         message_lines.append("")
+        message_lines.append(f"*Balance as of {format_date_indian(balance_date_str)}:*")
         message_lines.append(f"Opening Balance: {format_amount(opening)}")
         message_lines.append(f"Purchases: {format_amount(purchase)}")
         message_lines.append(f"Collections: {format_amount(collection)}")
@@ -1552,14 +1565,22 @@ def generate_payment_reminder_message():
             message_lines.append(f"Debit Note: {format_amount(debit)}")
         
         message_lines.append("")
-        message_lines.append(f"*Closing Balance: {format_amount(closing_balance)}*")
+        message_lines.append(f"*Closing Balance ({format_date_indian(balance_date_str)}): {format_amount(closing_balance)}*")
+        
+        # Show subsequent collections if any
+        if subsequent_collections > 0:
+            message_lines.append("")
+            message_lines.append(f"Less: Collections ({format_date_indian(balance_date_str)} to {format_date_indian(reminder_date)}): {format_amount(subsequent_collections)}")
+        
+        message_lines.append("")
+        message_lines.append(f"*Payment Due: {format_amount(payment_due)}*")
         
         if gst_hold > 0:
             message_lines.append("")
             message_lines.append(f"Less: GST Hold: {format_amount(gst_hold)}")
             message_lines.append("")
             message_lines.append("─" * 30)
-            message_lines.append(f"*Net Amount Due: {format_amount(net_balance)}*")
+            message_lines.append(f"*Net Amount Due: {format_amount(net_payment_due)}*")
         else:
             message_lines.append("─" * 30)
         
@@ -1577,8 +1598,9 @@ def generate_payment_reminder_message():
             'message': message,
             'dealer_name': dealer_name,
             'closing_balance': round(closing_balance, 2),
+            'payment_due': round(payment_due, 2),
             'gst_hold': round(gst_hold, 2),
-            'net_balance': round(net_balance, 2)
+            'net_balance': round(net_payment_due, 2)
         })
         
     except Exception as e:
