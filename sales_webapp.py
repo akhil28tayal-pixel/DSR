@@ -3236,7 +3236,7 @@ def get_consolidated_vehicles():
                 
                 # Only add if there's positive pending material
                 if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
-                    # Get all billing info for this truck in current month (for display)
+                    # Get all billing info for this truck in current month (sorted by date ASC for FIFO)
                     cursor.execute('''
                         SELECT invoice_number, dealer_code, dealer_name, plant_depot, sale_date,
                                ppc_quantity, premium_quantity, opc_quantity, total_quantity,
@@ -3244,65 +3244,93 @@ def get_consolidated_vehicles():
                                plant_description
                         FROM sales_data
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
-                        ORDER BY sale_date DESC
+                        ORDER BY sale_date ASC
                     ''', (truck_number, month_start, selected_date))
                     billing_rows = cursor.fetchall()
                     
                     if billing_rows:
-                        # Use most recent billing for card info
-                        recent = billing_rows[0]
-                        billing_date = recent[4]
-                        dealer_code = recent[1]
-                        plant_depot = recent[3] or 'PLANT'
+                        # FIFO: Calculate which invoices are still pending
+                        # Total to consume = opening + all billing - pending = unloaded amount
+                        consumed_ppc = opening_ppc + (month_billed[0] or 0) + (month_other_billed[0] or 0) - pending_ppc
+                        consumed_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - pending_premium
+                        consumed_opc = opening_opc + (month_billed[2] or 0) + (month_other_billed[2] or 0) - pending_opc
                         
-                        # Build invoices list from all billings
-                        invoices_list = []
-                        dealer_codes_set = set()
-                        total_ppc = 0
-                        total_premium = 0
-                        total_opc = 0
-                        total_qty = 0
-                        total_val = 0
+                        # First consume opening balance
+                        consumed_ppc -= opening_ppc
+                        consumed_premium -= opening_premium
+                        consumed_opc -= opening_opc
+                        consumed_ppc = max(0, consumed_ppc)
+                        consumed_premium = max(0, consumed_premium)
+                        consumed_opc = max(0, consumed_opc)
                         
+                        # Now consume invoices in FIFO order until we've consumed enough
+                        pending_invoices = []
                         for row in billing_rows:
-                            invoices_list.append({
-                                'invoice_number': row[0],
-                                'dealer_code': row[1],
-                                'dealer_name': row[2],
-                                'ppc_quantity': row[5] or 0,
-                                'premium_quantity': row[6] or 0,
-                                'opc_quantity': row[7] or 0,
-                                'total_quantity': row[8] or 0,
-                                'total_value': row[12] or 0,
-                                'plant_depot': row[3],
-                                'plant_description': row[13],
-                                'sale_date': row[4]
-                            })
-                            if row[1]:
-                                dealer_codes_set.add(row[1])
-                            total_ppc += row[5] or 0
-                            total_premium += row[6] or 0
-                            total_opc += row[7] or 0
-                            total_qty += row[8] or 0
-                            total_val += row[12] or 0
+                            inv_ppc = row[5] or 0
+                            inv_premium = row[6] or 0
+                            inv_opc = row[7] or 0
+                            
+                            # How much of this invoice is consumed?
+                            consume_this_ppc = min(consumed_ppc, inv_ppc)
+                            consume_this_premium = min(consumed_premium, inv_premium)
+                            consume_this_opc = min(consumed_opc, inv_opc)
+                            
+                            consumed_ppc -= consume_this_ppc
+                            consumed_premium -= consume_this_premium
+                            consumed_opc -= consume_this_opc
+                            
+                            # Remaining from this invoice
+                            remaining_ppc = inv_ppc - consume_this_ppc
+                            remaining_premium = inv_premium - consume_this_premium
+                            remaining_opc = inv_opc - consume_this_opc
+                            
+                            # If any remaining, this invoice is pending
+                            if remaining_ppc > 0.01 or remaining_premium > 0.01 or remaining_opc > 0.01:
+                                pending_invoices.append({
+                                    'invoice_number': row[0],
+                                    'dealer_code': row[1],
+                                    'dealer_name': row[2],
+                                    'ppc_quantity': remaining_ppc,
+                                    'premium_quantity': remaining_premium,
+                                    'opc_quantity': remaining_opc,
+                                    'total_quantity': remaining_ppc + remaining_premium + remaining_opc,
+                                    'total_value': row[12] or 0,
+                                    'plant_depot': row[3],
+                                    'plant_description': row[13],
+                                    'sale_date': row[4]
+                                })
                         
-                        card_key = f"{truck_number}_{plant_depot}_pending"
-                        trucks_today[card_key] = {
-                            'truck_number': truck_number,
-                            'card_key': card_key,
-                            'plant_depot': plant_depot,
-                            'invoices': invoices_list,
-                            'dealer_codes': list(dealer_codes_set),
-                            'total_ppc': total_ppc,
-                            'total_premium': total_premium,
-                            'total_opc': total_opc,
-                            'total_quantity': total_qty,
-                            'total_value': total_val,
-                            'billing_date': billing_date,
-                            'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
-                            'other_billing': other_billing_map.get(truck_number, []),
-                            'from_earlier_date': True
-                        }
+                        if pending_invoices:
+                            # Use most recent pending invoice for card info
+                            recent = pending_invoices[-1]
+                            billing_date = recent['sale_date']
+                            dealer_code = recent['dealer_code']
+                            plant_depot = recent['plant_depot'] or 'PLANT'
+                            
+                            dealer_codes_set = set(inv['dealer_code'] for inv in pending_invoices if inv['dealer_code'])
+                            total_ppc = sum(inv['ppc_quantity'] for inv in pending_invoices)
+                            total_premium = sum(inv['premium_quantity'] for inv in pending_invoices)
+                            total_opc = sum(inv['opc_quantity'] for inv in pending_invoices)
+                            total_qty = sum(inv['total_quantity'] for inv in pending_invoices)
+                            total_val = sum(inv['total_value'] for inv in pending_invoices)
+                            
+                            card_key = f"{truck_number}_{plant_depot}_pending"
+                            trucks_today[card_key] = {
+                                'truck_number': truck_number,
+                                'card_key': card_key,
+                                'plant_depot': plant_depot,
+                                'invoices': pending_invoices,
+                                'dealer_codes': list(dealer_codes_set),
+                                'total_ppc': total_ppc,
+                                'total_premium': total_premium,
+                                'total_opc': total_opc,
+                                'total_quantity': total_qty,
+                                'total_value': total_val,
+                                'billing_date': billing_date,
+                                'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
+                                'other_billing': [],
+                                'from_earlier_date': True
+                            }
         
         # Add other_billing quantities to truck totals
         for truck_number, truck_data in trucks_today.items():
