@@ -3866,6 +3866,10 @@ def get_consolidated_vehicles():
                 billed_premium = row[6] or 0
                 billed_opc = row[7] or 0
                 
+                # Skip if this truck already has a pending card (from earlier_billed_trucks logic)
+                if f"{truck_number}_PLANT_pending" in trucks_today or f"{truck_number}_DEPOT_pending" in trucks_today:
+                    continue
+                
                 # Skip if this specific truck+date+plant_depot is already in list (from today's billing)
                 truck_date_source_key = f"{truck_number}_{billing_date}_{plant_depot}"
                 if truck_date_source_key in added_truck_date_sources:
