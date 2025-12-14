@@ -3448,9 +3448,15 @@ def get_consolidated_vehicles():
             
             # Today's remaining = min(today's billed, total pending)
             # This ensures that if total pending > today's billed, the excess shows on previous billings
-            remaining_ppc = min(truck_data['total_ppc'], total_pending_ppc)
-            remaining_premium = min(truck_data['total_premium'], total_pending_premium)
-            remaining_opc = min(truck_data['total_opc'], total_pending_opc)
+            # For vehicles from earlier dates (not billed today), show full pending as remaining
+            if truck_data.get('from_earlier_date'):
+                remaining_ppc = total_pending_ppc
+                remaining_premium = total_pending_premium
+                remaining_opc = total_pending_opc
+            else:
+                remaining_ppc = min(truck_data['total_ppc'], total_pending_ppc)
+                remaining_premium = min(truck_data['total_premium'], total_pending_premium)
+                remaining_opc = min(truck_data['total_opc'], total_pending_opc)
             
             # Calculate how much was unloaded for today's billing
             unloaded_for_today_ppc = truck_data['total_ppc'] - remaining_ppc
