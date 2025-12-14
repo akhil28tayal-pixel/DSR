@@ -3577,6 +3577,10 @@ def get_consolidated_vehicles():
             if not today_has_unloading:
                 # All unloading went to previous billings, not today's
                 truck_data['unloading_details'] = []
+            elif truck_data.get('from_earlier_date'):
+                # For pending vehicles from earlier dates, show all today's unloading without filtering
+                # unloading_details is already set from unloading_map
+                pass
             else:
                 # Filter unloading details to only show the portion that applies to today's billing
                 # Use FIFO: only show up to unloaded_for_today_* amounts
