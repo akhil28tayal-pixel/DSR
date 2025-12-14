@@ -3249,14 +3249,7 @@ def get_consolidated_vehicles():
                     billing_rows = cursor.fetchall()
                     
                     if billing_rows:
-                        # FIFO: Calculate how much to consume from sales_data invoices
-                        # Total unloaded = month_unloaded
-                        # First, opening balance absorbs unloading
-                        # Then, other_dealers_billing absorbs unloading (in date order with sales_data)
-                        # Remaining unloading consumes sales_data invoices
-                        
-                        # Amount to consume from sales_data = unloaded - opening - other_billing
-                        # But we need to cap at what's available from each source
+                        # FIFO: Consume in date order - opening first, then all billing by date
                         unloaded_ppc = month_unloaded[0] or 0
                         unloaded_premium = month_unloaded[1] or 0
                         unloaded_opc = month_unloaded[2] or 0
@@ -3270,24 +3263,8 @@ def get_consolidated_vehicles():
                         remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
                         remaining_to_consume_opc = unloaded_opc - consume_from_opening_opc
                         
-                        # Then consume other_dealers_billing
-                        other_billed_ppc = month_other_billed[0] or 0
-                        other_billed_premium = month_other_billed[1] or 0
-                        other_billed_opc = month_other_billed[2] or 0
-                        
-                        consume_from_other_ppc = min(other_billed_ppc, remaining_to_consume_ppc)
-                        consume_from_other_premium = min(other_billed_premium, remaining_to_consume_premium)
-                        consume_from_other_opc = min(other_billed_opc, remaining_to_consume_opc)
-                        
-                        # Remaining to consume from sales_data invoices
-                        consumed_ppc = remaining_to_consume_ppc - consume_from_other_ppc
-                        consumed_premium = remaining_to_consume_premium - consume_from_other_premium
-                        consumed_opc = remaining_to_consume_opc - consume_from_other_opc
-                        consumed_ppc = max(0, consumed_ppc)
-                        consumed_premium = max(0, consumed_premium)
-                        consumed_opc = max(0, consumed_opc)
-                        
-                        # Now consume invoices in FIFO order until we've consumed enough
+                        # Now consume invoices in FIFO order (by date) until we've consumed enough
+                        # billing_rows is already sorted by date ASC
                         pending_invoices = []
                         for row in billing_rows:
                             inv_ppc = row[5] or 0
@@ -3295,13 +3272,13 @@ def get_consolidated_vehicles():
                             inv_opc = row[7] or 0
                             
                             # How much of this invoice is consumed?
-                            consume_this_ppc = min(consumed_ppc, inv_ppc)
-                            consume_this_premium = min(consumed_premium, inv_premium)
-                            consume_this_opc = min(consumed_opc, inv_opc)
+                            consume_this_ppc = min(remaining_to_consume_ppc, inv_ppc)
+                            consume_this_premium = min(remaining_to_consume_premium, inv_premium)
+                            consume_this_opc = min(remaining_to_consume_opc, inv_opc)
                             
-                            consumed_ppc -= consume_this_ppc
-                            consumed_premium -= consume_this_premium
-                            consumed_opc -= consume_this_opc
+                            remaining_to_consume_ppc -= consume_this_ppc
+                            remaining_to_consume_premium -= consume_this_premium
+                            remaining_to_consume_opc -= consume_this_opc
                             
                             # Remaining from this invoice
                             remaining_ppc = inv_ppc - consume_this_ppc
