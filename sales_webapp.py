@@ -1228,11 +1228,14 @@ def generate_unloading_whatsapp_message():
         message_lines.append("*Opening Balance:*")
         balance_parts = []
         if opening_ppc_bags != 0:
-            balance_parts.append(f"PPC: {opening_ppc_bags}")
+            status = "Advance" if opening_ppc_bags > 0 else "Pending"
+            balance_parts.append(f"PPC: {abs(opening_ppc_bags)} {status}")
         if opening_premium_bags != 0:
-            balance_parts.append(f"Premium: {opening_premium_bags}")
+            status = "Advance" if opening_premium_bags > 0 else "Pending"
+            balance_parts.append(f"Premium: {abs(opening_premium_bags)} {status}")
         if opening_opc_bags != 0:
-            balance_parts.append(f"OPC: {opening_opc_bags}")
+            status = "Advance" if opening_opc_bags > 0 else "Pending"
+            balance_parts.append(f"OPC: {abs(opening_opc_bags)} {status}")
         
         if balance_parts:
             message_lines.append(f"  {', '.join(balance_parts)} bags")
@@ -1289,11 +1292,14 @@ def generate_unloading_whatsapp_message():
         message_lines.append("*Closing Balance:*")
         closing_parts = []
         if closing_ppc_bags != 0:
-            closing_parts.append(f"PPC: {closing_ppc_bags}")
+            status = "Advance" if closing_ppc_bags > 0 else "Pending"
+            closing_parts.append(f"PPC: {abs(closing_ppc_bags)} {status}")
         if closing_premium_bags != 0:
-            closing_parts.append(f"Premium: {closing_premium_bags}")
+            status = "Advance" if closing_premium_bags > 0 else "Pending"
+            closing_parts.append(f"Premium: {abs(closing_premium_bags)} {status}")
         if closing_opc_bags != 0:
-            closing_parts.append(f"OPC: {closing_opc_bags}")
+            status = "Advance" if closing_opc_bags > 0 else "Pending"
+            closing_parts.append(f"OPC: {abs(closing_opc_bags)} {status}")
         
         if closing_parts:
             message_lines.append(f"  {', '.join(closing_parts)} bags")
