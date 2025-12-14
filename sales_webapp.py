@@ -3565,9 +3565,14 @@ def get_consolidated_vehicles():
             
             # Filter unloading_details to only show unloading that applies to today's billing
             # by matching product types and excluding unloading consumed by previous billings
-            today_has_unloading = (unloaded_for_today_ppc > 0.01 or 
-                                   unloaded_for_today_premium > 0.01 or 
-                                   unloaded_for_today_opc > 0.01)
+            # For vehicles from earlier dates, show today's unloading directly
+            if truck_data.get('from_earlier_date'):
+                # For pending vehicles from earlier dates, show all today's unloading
+                today_has_unloading = len(truck_data.get('unloading_details', [])) > 0
+            else:
+                today_has_unloading = (unloaded_for_today_ppc > 0.01 or 
+                                       unloaded_for_today_premium > 0.01 or 
+                                       unloaded_for_today_opc > 0.01)
             
             if not today_has_unloading:
                 # All unloading went to previous billings, not today's
