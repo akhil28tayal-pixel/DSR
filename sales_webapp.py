@@ -3296,15 +3296,19 @@ def get_consolidated_vehicles():
                             remaining_opc = inv_opc - consume_this_opc
                             
                             # If any remaining, this invoice is pending
+                            # Store original billed amounts for display, pending amounts for remaining calculation
                             if remaining_ppc > 0.01 or remaining_premium > 0.01 or remaining_opc > 0.01:
                                 pending_invoices.append({
                                     'invoice_number': row[0],
                                     'dealer_code': row[1],
                                     'dealer_name': row[2],
-                                    'ppc_quantity': remaining_ppc,
-                                    'premium_quantity': remaining_premium,
-                                    'opc_quantity': remaining_opc,
-                                    'total_quantity': remaining_ppc + remaining_premium + remaining_opc,
+                                    'ppc_quantity': inv_ppc,  # Original billed amount
+                                    'premium_quantity': inv_premium,  # Original billed amount
+                                    'opc_quantity': inv_opc,  # Original billed amount
+                                    'total_quantity': inv_ppc + inv_premium + inv_opc,  # Original total
+                                    'pending_ppc': remaining_ppc,  # Pending amount
+                                    'pending_premium': remaining_premium,  # Pending amount
+                                    'pending_opc': remaining_opc,  # Pending amount
                                     'total_value': row[12] or 0,
                                     'plant_depot': row[3],
                                     'plant_description': row[13],
