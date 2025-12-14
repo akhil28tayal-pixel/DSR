@@ -3249,16 +3249,40 @@ def get_consolidated_vehicles():
                     billing_rows = cursor.fetchall()
                     
                     if billing_rows:
-                        # FIFO: Calculate which invoices are still pending
-                        # Total to consume = opening + all billing - pending = unloaded amount
-                        consumed_ppc = opening_ppc + (month_billed[0] or 0) + (month_other_billed[0] or 0) - pending_ppc
-                        consumed_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - pending_premium
-                        consumed_opc = opening_opc + (month_billed[2] or 0) + (month_other_billed[2] or 0) - pending_opc
+                        # FIFO: Calculate how much to consume from sales_data invoices
+                        # Total unloaded = month_unloaded
+                        # First, opening balance absorbs unloading
+                        # Then, other_dealers_billing absorbs unloading (in date order with sales_data)
+                        # Remaining unloading consumes sales_data invoices
+                        
+                        # Amount to consume from sales_data = unloaded - opening - other_billing
+                        # But we need to cap at what's available from each source
+                        unloaded_ppc = month_unloaded[0] or 0
+                        unloaded_premium = month_unloaded[1] or 0
+                        unloaded_opc = month_unloaded[2] or 0
                         
                         # First consume opening balance
-                        consumed_ppc -= opening_ppc
-                        consumed_premium -= opening_premium
-                        consumed_opc -= opening_opc
+                        consume_from_opening_ppc = min(opening_ppc, unloaded_ppc)
+                        consume_from_opening_premium = min(opening_premium, unloaded_premium)
+                        consume_from_opening_opc = min(opening_opc, unloaded_opc)
+                        
+                        remaining_to_consume_ppc = unloaded_ppc - consume_from_opening_ppc
+                        remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
+                        remaining_to_consume_opc = unloaded_opc - consume_from_opening_opc
+                        
+                        # Then consume other_dealers_billing
+                        other_billed_ppc = month_other_billed[0] or 0
+                        other_billed_premium = month_other_billed[1] or 0
+                        other_billed_opc = month_other_billed[2] or 0
+                        
+                        consume_from_other_ppc = min(other_billed_ppc, remaining_to_consume_ppc)
+                        consume_from_other_premium = min(other_billed_premium, remaining_to_consume_premium)
+                        consume_from_other_opc = min(other_billed_opc, remaining_to_consume_opc)
+                        
+                        # Remaining to consume from sales_data invoices
+                        consumed_ppc = remaining_to_consume_ppc - consume_from_other_ppc
+                        consumed_premium = remaining_to_consume_premium - consume_from_other_premium
+                        consumed_opc = remaining_to_consume_opc - consume_from_other_opc
                         consumed_ppc = max(0, consumed_ppc)
                         consumed_premium = max(0, consumed_premium)
                         consumed_opc = max(0, consumed_opc)
