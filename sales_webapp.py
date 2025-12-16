@@ -2124,6 +2124,17 @@ def get_dealer_balance():
                     if truck in opening_balance_vehicles:
                         continue  # Already processed
                     
+                    # Get previous month's opening balance for this truck (from pending_vehicle_unloading)
+                    cursor.execute('''
+                        SELECT COALESCE(ppc_qty, 0), COALESCE(premium_qty, 0), COALESCE(opc_qty, 0)
+                        FROM pending_vehicle_unloading
+                        WHERE vehicle_number = ? AND month_year = ?
+                    ''', (truck, prev_month_year))
+                    prev_opening_row = cursor.fetchone()
+                    prev_opening_ppc = prev_opening_row[0] if prev_opening_row else 0
+                    prev_opening_premium = prev_opening_row[1] if prev_opening_row else 0
+                    prev_opening_opc = prev_opening_row[2] if prev_opening_row else 0
+                    
                     # Get previous month's billing for this truck
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
@@ -2147,10 +2158,10 @@ def get_dealer_balance():
                     ''', (truck, prev_month_start, prev_month_end))
                     prev_unloaded = cursor.fetchone()
                     
-                    # Calculate closing balance
-                    closing_ppc = (prev_billed[0] or 0) + (prev_other_billed[0] or 0) - (prev_unloaded[0] or 0)
-                    closing_premium = (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
-                    closing_opc = (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
+                    # Calculate closing balance (opening + billing - unloading)
+                    closing_ppc = prev_opening_ppc + (prev_billed[0] or 0) + (prev_other_billed[0] or 0) - (prev_unloaded[0] or 0)
+                    closing_premium = prev_opening_premium + (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
+                    closing_opc = prev_opening_opc + (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
                     
                     # Cap negative values at 0
                     closing_ppc = max(0, closing_ppc)
