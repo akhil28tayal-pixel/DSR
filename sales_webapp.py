@@ -3155,6 +3155,11 @@ def get_consolidated_vehicles():
                             total_val = sum(inv['total_value'] for inv in pending_invoices)
                             
                             card_key = f"{truck_number}_{plant_depot}_pending"
+                            # Calculate the pending amounts for this card (sum of pending from each invoice)
+                            card_pending_ppc = sum(inv['pending_ppc'] for inv in pending_invoices)
+                            card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
+                            card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
+                            
                             trucks_today[card_key] = {
                                 'truck_number': truck_number,
                                 'card_key': card_key,
@@ -3169,7 +3174,11 @@ def get_consolidated_vehicles():
                                 'billing_date': billing_date,
                                 'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
                                 'other_billing': [],
-                                'from_earlier_date': True
+                                'from_earlier_date': True,
+                                # Store card-specific pending for remaining calculation
+                                'card_pending_ppc': card_pending_ppc,
+                                'card_pending_premium': card_pending_premium,
+                                'card_pending_opc': card_pending_opc
                             }
         
         # Add other_billing quantities to truck totals
@@ -3351,11 +3360,12 @@ def get_consolidated_vehicles():
             
             # Today's remaining = min(today's billed, total pending)
             # This ensures that if total pending > today's billed, the excess shows on previous billings
-            # For vehicles from earlier dates (not billed today), show full pending as remaining
+            # For vehicles from earlier dates (not billed today), use card-specific pending as remaining
             if truck_data.get('from_earlier_date'):
-                remaining_ppc = total_pending_ppc
-                remaining_premium = total_pending_premium
-                remaining_opc = total_pending_opc
+                # Use card-specific pending amounts (calculated during card creation)
+                remaining_ppc = truck_data.get('card_pending_ppc', total_pending_ppc)
+                remaining_premium = truck_data.get('card_pending_premium', total_pending_premium)
+                remaining_opc = truck_data.get('card_pending_opc', total_pending_opc)
             else:
                 remaining_ppc = min(truck_data['total_ppc'], total_pending_ppc)
                 remaining_premium = min(truck_data['total_premium'], total_pending_premium)
