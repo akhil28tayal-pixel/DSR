@@ -2152,6 +2152,11 @@ def get_dealer_balance():
                     closing_premium = (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
                     closing_opc = (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
                     
+                    # Cap negative values at 0
+                    closing_ppc = max(0, closing_ppc)
+                    closing_premium = max(0, closing_premium)
+                    closing_opc = max(0, closing_opc)
+                    
                     # Only add if there's pending material
                     if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
                         opening_balance_vehicles[truck] = {
@@ -4565,6 +4570,251 @@ def api_unloading_query():
         })
         
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/dealer_summary_report', methods=['POST'])
+def api_dealer_summary_report():
+    """API endpoint for generating dealer summary report with opening balance, daily billing/unloading, and closing balance"""
+    try:
+        from dateutil.relativedelta import relativedelta
+        from datetime import datetime, timedelta
+        
+        data = request.get_json()
+        dealer_code = data.get('dealer_code')
+        from_date = data.get('from_date')
+        to_date = data.get('to_date')
+        
+        if not dealer_code or not from_date or not to_date:
+            return jsonify({'success': False, 'error': 'Dealer code, from_date, and to_date are required'})
+        
+        db = sqlite3.connect(DB_PATH)
+        cursor = db.cursor()
+        
+        # Get dealer name
+        cursor.execute('SELECT dealer_name FROM dealers WHERE dealer_code = ?', (dealer_code,))
+        dealer_row = cursor.fetchone()
+        dealer_name = dealer_row[0] if dealer_row else f'Dealer {dealer_code}'
+        
+        # Convert bags to MT: 1 MT = 20 bags, so bags = MT * 20
+        MT_TO_BAGS = 20
+        
+        # Calculate opening balance (balance as of day before from_date)
+        from_date_dt = datetime.strptime(from_date, '%Y-%m-%d')
+        month_year = from_date_dt.strftime('%Y-%m')
+        month_start = month_year + '-01'
+        day_before_from = (from_date_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        # Get opening material balance for the month
+        opening_ppc = 0
+        opening_premium = 0
+        opening_opc = 0
+        
+        # First check opening_material_balance table for this month
+        cursor.execute('''
+            SELECT ppc_qty, premium_qty, opc_qty
+            FROM opening_material_balance
+            WHERE month_year = ? AND dealer_code = ?
+        ''', (month_year, str(dealer_code)))
+        opening_row = cursor.fetchone()
+        
+        if opening_row:
+            opening_ppc = (opening_row[0] or 0) * MT_TO_BAGS
+            opening_premium = (opening_row[1] or 0) * MT_TO_BAGS
+            opening_opc = (opening_row[2] or 0) * MT_TO_BAGS
+        else:
+            # Calculate from previous month closing if no opening balance entry
+            prev_month_dt = from_date_dt.replace(day=1) - timedelta(days=1)
+            prev_month_year = prev_month_dt.strftime('%Y-%m')
+            prev_month_start = prev_month_year + '-01'
+            prev_month_end = from_date_dt.replace(day=1).strftime('%Y-%m-%d')
+            
+            # Check previous month opening
+            cursor.execute('''
+                SELECT ppc_qty, premium_qty, opc_qty
+                FROM opening_material_balance
+                WHERE month_year = ? AND dealer_code = ?
+            ''', (prev_month_year, str(dealer_code)))
+            prev_opening = cursor.fetchone()
+            
+            if prev_opening:
+                opening_ppc = (prev_opening[0] or 0) * MT_TO_BAGS
+                opening_premium = (prev_opening[1] or 0) * MT_TO_BAGS
+                opening_opc = (prev_opening[2] or 0) * MT_TO_BAGS
+            
+            # Add previous month billing
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                FROM sales_data
+                WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?
+            ''', (dealer_code, prev_month_start, prev_month_end))
+            prev_billing = cursor.fetchone()
+            if prev_billing:
+                opening_ppc += (prev_billing[0] or 0) * MT_TO_BAGS
+                opening_premium += (prev_billing[1] or 0) * MT_TO_BAGS
+                opening_opc += (prev_billing[2] or 0) * MT_TO_BAGS
+            
+            # Subtract previous month unloading
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                FROM vehicle_unloading
+                WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date < ?
+            ''', (dealer_code, prev_month_start, prev_month_end))
+            prev_unloading = cursor.fetchone()
+            if prev_unloading:
+                opening_ppc -= (prev_unloading[0] or 0) * MT_TO_BAGS
+                opening_premium -= (prev_unloading[1] or 0) * MT_TO_BAGS
+                opening_opc -= (prev_unloading[2] or 0) * MT_TO_BAGS
+        
+        # Add billing from month start to day before from_date (if from_date is not month start)
+        if from_date != month_start:
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                FROM sales_data
+                WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?
+            ''', (dealer_code, month_start, from_date))
+            billing_before = cursor.fetchone()
+            if billing_before:
+                opening_ppc += (billing_before[0] or 0) * MT_TO_BAGS
+                opening_premium += (billing_before[1] or 0) * MT_TO_BAGS
+                opening_opc += (billing_before[2] or 0) * MT_TO_BAGS
+            
+            # Subtract unloading from month start to day before from_date
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                FROM vehicle_unloading
+                WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date < ?
+            ''', (dealer_code, month_start, from_date))
+            unloading_before = cursor.fetchone()
+            if unloading_before:
+                opening_ppc -= (unloading_before[0] or 0) * MT_TO_BAGS
+                opening_premium -= (unloading_before[1] or 0) * MT_TO_BAGS
+                opening_opc -= (unloading_before[2] or 0) * MT_TO_BAGS
+        
+        opening_total = opening_ppc + opening_premium + opening_opc
+        
+        # Get daily billing and unloading data
+        daily_data = []
+        current_ppc = opening_ppc
+        current_premium = opening_premium
+        current_opc = opening_opc
+        
+        # Generate date range
+        current_date = from_date_dt
+        to_date_dt = datetime.strptime(to_date, '%Y-%m-%d')
+        
+        while current_date <= to_date_dt:
+            date_str = current_date.strftime('%Y-%m-%d')
+            day_data = {
+                'date': date_str,
+                'billing': [],
+                'unloading': [],
+                'closing': None
+            }
+            
+            # Get billing for this date
+            cursor.execute('''
+                SELECT truck_number, ppc_quantity, premium_quantity, opc_quantity, total_quantity
+                FROM sales_data
+                WHERE dealer_code = ? AND sale_date = ?
+            ''', (dealer_code, date_str))
+            billing_rows = cursor.fetchall()
+            
+            day_billing_ppc = 0
+            day_billing_premium = 0
+            day_billing_opc = 0
+            
+            for row in billing_rows:
+                ppc = (row[1] or 0) * MT_TO_BAGS
+                premium = (row[2] or 0) * MT_TO_BAGS
+                opc = (row[3] or 0) * MT_TO_BAGS
+                total = ppc + premium + opc
+                
+                day_billing_ppc += ppc
+                day_billing_premium += premium
+                day_billing_opc += opc
+                
+                day_data['billing'].append({
+                    'truck': row[0] or '',
+                    'ppc': ppc,
+                    'premium': premium,
+                    'opc': opc,
+                    'total': total
+                })
+            
+            # Get unloading for this date
+            cursor.execute('''
+                SELECT truck_number, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity
+                FROM vehicle_unloading
+                WHERE dealer_code = ? AND unloading_date = ?
+            ''', (dealer_code, date_str))
+            unloading_rows = cursor.fetchall()
+            
+            day_unloading_ppc = 0
+            day_unloading_premium = 0
+            day_unloading_opc = 0
+            
+            for row in unloading_rows:
+                ppc = (row[2] or 0) * MT_TO_BAGS
+                premium = (row[3] or 0) * MT_TO_BAGS
+                opc = (row[4] or 0) * MT_TO_BAGS
+                total = ppc + premium + opc
+                
+                day_unloading_ppc += ppc
+                day_unloading_premium += premium
+                day_unloading_opc += opc
+                
+                day_data['unloading'].append({
+                    'truck': row[0] or '',
+                    'point': row[1] or '',
+                    'ppc': ppc,
+                    'premium': premium,
+                    'opc': opc,
+                    'total': total
+                })
+            
+            # Calculate closing balance for the day
+            current_ppc += day_billing_ppc - day_unloading_ppc
+            current_premium += day_billing_premium - day_unloading_premium
+            current_opc += day_billing_opc - day_unloading_opc
+            
+            # Only add day data if there's any activity
+            if day_data['billing'] or day_data['unloading']:
+                day_data['closing'] = {
+                    'ppc': current_ppc,
+                    'premium': current_premium,
+                    'opc': current_opc,
+                    'total': current_ppc + current_premium + current_opc
+                }
+                daily_data.append(day_data)
+            
+            current_date += timedelta(days=1)
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'dealer_code': dealer_code,
+            'dealer_name': dealer_name,
+            'from_date': from_date,
+            'to_date': to_date,
+            'opening_balance': {
+                'ppc': opening_ppc,
+                'premium': opening_premium,
+                'opc': opening_opc,
+                'total': opening_total
+            },
+            'daily_data': daily_data,
+            'closing_balance': {
+                'ppc': current_ppc,
+                'premium': current_premium,
+                'opc': current_opc,
+                'total': current_ppc + current_premium + current_opc
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/dealer_financial_balance')

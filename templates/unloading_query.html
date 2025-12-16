@@ -53,6 +53,25 @@
             padding: 10px;
             font-weight: 500;
         }
+        .dealer-summary-table th, .dealer-summary-table td {
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+        .dealer-summary-table .opening-row {
+            background-color: #e3f2fd !important;
+            font-weight: 600;
+        }
+        .dealer-summary-table .closing-row {
+            background-color: #fff3e0 !important;
+            font-weight: 600;
+        }
+        .dealer-summary-table .date-row:hover {
+            background-color: #f5f5f5;
+        }
+        .bags-unit {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -153,6 +172,73 @@
                         <button class="btn btn-outline-secondary" onclick="clearDealerQuery()" title="Clear">
                             <i class="bi bi-x-lg"></i>
                         </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dealer Summary Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="query-card" id="dealerSummaryCard">
+                    <h5><i class="bi bi-file-earmark-bar-graph me-2"></i>Dealer Summary Report</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">Dealer</label>
+                            <select class="form-select" id="summaryDealerSelect">
+                                <option value="">Select Dealer</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">From Date</label>
+                            <input type="date" class="form-control" id="summaryDateFrom">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">To Date</label>
+                            <input type="date" class="form-control" id="summaryDateTo">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <div class="d-flex gap-2 w-100">
+                                <button class="btn btn-info btn-query flex-grow-1" onclick="generateDealerSummary()">
+                                    <i class="bi bi-file-earmark-text me-1"></i>Generate
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="clearDealerSummary()" title="Clear">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dealer Summary Results Section -->
+        <div id="dealerSummarySection" style="display: none;">
+            <div class="alert alert-info mb-3" id="summaryQueryInfo"></div>
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-file-earmark-bar-graph me-2"></i>Dealer Summary Report</span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="exportDealerSummaryToExcel()">
+                        <i class="bi bi-download me-1"></i>Export Excel
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered mb-0 dealer-summary-table" id="dealerSummaryTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Unloading Point</th>
+                                    <th class="text-end">PPC (Bags)</th>
+                                    <th class="text-end">Premium (Bags)</th>
+                                    <th class="text-end">OPC (Bags)</th>
+                                    <th class="text-end">Total (Bags)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dealerSummaryBody">
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -265,12 +351,19 @@
                 const data = await response.json();
                 
                 const select = document.getElementById('dealerSelect');
+                const summarySelect = document.getElementById('summaryDealerSelect');
                 if (data.dealers && data.dealers.length > 0) {
                     data.dealers.forEach(dealer => {
                         const option = document.createElement('option');
                         option.value = dealer.dealer_code;
                         option.textContent = `${dealer.dealer_name} (${dealer.dealer_code})`;
                         select.appendChild(option);
+                        
+                        // Also add to summary dealer select
+                        const summaryOption = document.createElement('option');
+                        summaryOption.value = dealer.dealer_code;
+                        summaryOption.textContent = `${dealer.dealer_name} (${dealer.dealer_code})`;
+                        summarySelect.appendChild(summaryOption);
                     });
                 }
             } catch (error) {
@@ -303,9 +396,18 @@
         
         function clearResults() {
             document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('dealerSummarySection').style.display = 'none';
             document.getElementById('noResults').style.display = 'none';
             document.querySelectorAll('.query-card').forEach(card => card.classList.remove('active'));
             currentResults = [];
+        }
+        
+        function clearDealerSummary() {
+            document.getElementById('summaryDealerSelect').value = '';
+            document.getElementById('summaryDateFrom').value = '';
+            document.getElementById('summaryDateTo').value = '';
+            document.getElementById('dealerSummarySection').style.display = 'none';
+            document.querySelectorAll('.query-card').forEach(card => card.classList.remove('active'));
         }
         
         // Set active query card
@@ -587,6 +689,191 @@
             const a = document.createElement('a');
             a.href = url;
             a.download = 'unloading_query_' + new Date().toISOString().split('T')[0] + '.csv';
+            a.click();
+        }
+        
+        // Dealer Summary Report
+        let dealerSummaryData = [];
+        
+        async function generateDealerSummary() {
+            setActiveCard('dealerSummaryCard');
+            const dealerCode = document.getElementById('summaryDealerSelect').value;
+            const dealerText = document.getElementById('summaryDealerSelect').selectedOptions[0]?.text || '';
+            const fromDate = document.getElementById('summaryDateFrom').value;
+            const toDate = document.getElementById('summaryDateTo').value;
+            
+            if (!dealerCode) {
+                alert('Please select a dealer');
+                return;
+            }
+            if (!fromDate || !toDate) {
+                alert('Please select both From and To dates');
+                return;
+            }
+            
+            // Hide other results sections
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('noResults').style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/dealer_summary_report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dealer_code: dealerCode,
+                        from_date: fromDate,
+                        to_date: toDate
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    dealerSummaryData = data;
+                    displayDealerSummary(data, dealerText, fromDate, toDate);
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to generate report'));
+                }
+            } catch (error) {
+                console.error('Error generating dealer summary:', error);
+                alert('Error generating dealer summary report');
+            }
+        }
+        
+        function displayDealerSummary(data, dealerName, fromDate, toDate) {
+            document.getElementById('dealerSummarySection').style.display = 'block';
+            document.getElementById('summaryQueryInfo').innerHTML = 
+                `<i class="bi bi-info-circle me-2"></i><strong>Dealer:</strong> ${dealerName} | <strong>Period:</strong> ${fromDate} to ${toDate}`;
+            
+            const tbody = document.getElementById('dealerSummaryBody');
+            let html = '';
+            
+            // Opening Balance Row
+            const opening = data.opening_balance || { ppc: 0, premium: 0, opc: 0, total: 0 };
+            html += `
+                <tr class="opening-row">
+                    <td>${fromDate}</td>
+                    <td><strong>Opening Balance</strong></td>
+                    <td>-</td>
+                    <td class="text-end">${opening.ppc.toFixed(0)}</td>
+                    <td class="text-end">${opening.premium.toFixed(0)}</td>
+                    <td class="text-end">${opening.opc.toFixed(0)}</td>
+                    <td class="text-end"><strong>${opening.total.toFixed(0)}</strong></td>
+                </tr>
+            `;
+            
+            // Daily entries
+            const dailyData = data.daily_data || [];
+            dailyData.forEach(day => {
+                // Billing entries for the day
+                if (day.billing && day.billing.length > 0) {
+                    day.billing.forEach((bill, idx) => {
+                        html += `
+                            <tr class="date-row table-success">
+                                <td>${idx === 0 ? day.date : ''}</td>
+                                <td><span class="badge bg-success me-1">+</span>Billing${bill.truck ? ' (' + bill.truck + ')' : ''}</td>
+                                <td>-</td>
+                                <td class="text-end text-success">+${bill.ppc.toFixed(0)}</td>
+                                <td class="text-end text-success">+${bill.premium.toFixed(0)}</td>
+                                <td class="text-end text-success">+${bill.opc.toFixed(0)}</td>
+                                <td class="text-end text-success"><strong>+${bill.total.toFixed(0)}</strong></td>
+                            </tr>
+                        `;
+                    });
+                }
+                
+                // Unloading entries for the day
+                if (day.unloading && day.unloading.length > 0) {
+                    day.unloading.forEach((unload, idx) => {
+                        html += `
+                            <tr class="date-row table-danger">
+                                <td>${idx === 0 && (!day.billing || day.billing.length === 0) ? day.date : ''}</td>
+                                <td><span class="badge bg-danger me-1">-</span>Unloading${unload.truck ? ' (' + unload.truck + ')' : ''}</td>
+                                <td>${unload.point || '-'}</td>
+                                <td class="text-end text-danger">-${unload.ppc.toFixed(0)}</td>
+                                <td class="text-end text-danger">-${unload.premium.toFixed(0)}</td>
+                                <td class="text-end text-danger">-${unload.opc.toFixed(0)}</td>
+                                <td class="text-end text-danger"><strong>-${unload.total.toFixed(0)}</strong></td>
+                            </tr>
+                        `;
+                    });
+                }
+                
+                // Day closing balance
+                if (day.closing) {
+                    html += `
+                        <tr class="closing-row">
+                            <td></td>
+                            <td><em>Closing Balance (${day.date})</em></td>
+                            <td>-</td>
+                            <td class="text-end">${day.closing.ppc.toFixed(0)}</td>
+                            <td class="text-end">${day.closing.premium.toFixed(0)}</td>
+                            <td class="text-end">${day.closing.opc.toFixed(0)}</td>
+                            <td class="text-end"><strong>${day.closing.total.toFixed(0)}</strong></td>
+                        </tr>
+                    `;
+                }
+            });
+            
+            // Final Closing Balance Row
+            const closing = data.closing_balance || { ppc: 0, premium: 0, opc: 0, total: 0 };
+            html += `
+                <tr class="closing-row" style="background-color: #ffe0b2 !important;">
+                    <td>${toDate}</td>
+                    <td><strong>Final Closing Balance</strong></td>
+                    <td>-</td>
+                    <td class="text-end">${closing.ppc.toFixed(0)}</td>
+                    <td class="text-end">${closing.premium.toFixed(0)}</td>
+                    <td class="text-end">${closing.opc.toFixed(0)}</td>
+                    <td class="text-end"><strong>${closing.total.toFixed(0)}</strong></td>
+                </tr>
+            `;
+            
+            tbody.innerHTML = html;
+        }
+        
+        function exportDealerSummaryToExcel() {
+            if (!dealerSummaryData || !dealerSummaryData.daily_data) {
+                alert('No data to export');
+                return;
+            }
+            
+            const dealerName = document.getElementById('summaryDealerSelect').selectedOptions[0]?.text || 'Dealer';
+            const fromDate = document.getElementById('summaryDateFrom').value;
+            const toDate = document.getElementById('summaryDateTo').value;
+            
+            let csv = 'Date,Description,Unloading Point,PPC (Bags),Premium (Bags),OPC (Bags),Total (Bags)\n';
+            
+            // Opening balance
+            const opening = dealerSummaryData.opening_balance || { ppc: 0, premium: 0, opc: 0, total: 0 };
+            csv += `${fromDate},Opening Balance,-,${opening.ppc},${opening.premium},${opening.opc},${opening.total}\n`;
+            
+            // Daily data
+            dealerSummaryData.daily_data.forEach(day => {
+                if (day.billing) {
+                    day.billing.forEach(bill => {
+                        csv += `${day.date},Billing${bill.truck ? ' (' + bill.truck + ')' : ''},-,+${bill.ppc},+${bill.premium},+${bill.opc},+${bill.total}\n`;
+                    });
+                }
+                if (day.unloading) {
+                    day.unloading.forEach(unload => {
+                        csv += `${day.date},Unloading${unload.truck ? ' (' + unload.truck + ')' : ''},"${unload.point || ''}",-${unload.ppc},-${unload.premium},-${unload.opc},-${unload.total}\n`;
+                    });
+                }
+                if (day.closing) {
+                    csv += `,Closing Balance (${day.date}),-,${day.closing.ppc},${day.closing.premium},${day.closing.opc},${day.closing.total}\n`;
+                }
+            });
+            
+            // Final closing
+            const closing = dealerSummaryData.closing_balance || { ppc: 0, premium: 0, opc: 0, total: 0 };
+            csv += `${toDate},Final Closing Balance,-,${closing.ppc},${closing.premium},${closing.opc},${closing.total}\n`;
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dealer_summary_${dealerName.replace(/[^a-zA-Z0-9]/g, '_')}_${fromDate}_to_${toDate}.csv`;
             a.click();
         }
     </script>
