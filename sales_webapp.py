@@ -2984,6 +2984,12 @@ def get_consolidated_vehicles():
                 for dc in truck_data.get('dealer_codes', []):
                     truck_plant_dealer_codes[truck_number].add(str(dc))
         
+        # DEBUG: Log for HR58D1569
+        if 'HR58D1569' in [td['truck_number'] for td in trucks_today.values()]:
+            print(f"DEBUG HR58D1569: truck_card_count={truck_card_count.get('HR58D1569')}")
+            print(f"DEBUG HR58D1569: truck_plant_dealer_codes={truck_plant_dealer_codes.get('HR58D1569')}")
+            print(f"DEBUG HR58D1569: unloading_map={unloading_map.get('HR58D1569')}")
+        
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']
             dealer_codes = truck_data['dealer_codes']
