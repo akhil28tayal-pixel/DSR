@@ -3385,6 +3385,10 @@ def get_consolidated_vehicles():
             dealer_codes_str = set(str(dc) for dc in dealer_codes)
             
             # Use unloading_map which only contains unloading on selected_date
+            # Get PLANT dealer codes for this truck (for DEPOT card filtering)
+            plant_codes_for_truck = truck_plant_dealer_codes.get(truck_number, set())
+            card_plant_depot = truck_data.get('plant_depot', 'PLANT')
+            
             if truck_number in unloading_map:
                 for u in unloading_map[truck_number]:
                     # If single card, count all unloading
@@ -3395,10 +3399,21 @@ def get_consolidated_vehicles():
                         total_unloaded_opc += u['opc_unloaded']
                     else:
                         u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
-                        if u_dealer_code in dealer_codes_str or not u_dealer_code:
-                            total_unloaded_ppc += u['ppc_unloaded']
-                            total_unloaded_premium += u['premium_unloaded']
-                            total_unloaded_opc += u['opc_unloaded']
+                        if card_plant_depot == 'DEPOT':
+                            # DEPOT card gets unloading that:
+                            # 1. Matches its own dealer_codes, OR
+                            # 2. Doesn't match any PLANT card's dealer_codes
+                            # 3. Has no dealer_code (legacy data)
+                            if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes_for_truck or not u_dealer_code:
+                                total_unloaded_ppc += u['ppc_unloaded']
+                                total_unloaded_premium += u['premium_unloaded']
+                                total_unloaded_opc += u['opc_unloaded']
+                        else:
+                            # PLANT card - only gets unloading matching its dealer_codes
+                            if u_dealer_code in dealer_codes_str or not u_dealer_code:
+                                total_unloaded_ppc += u['ppc_unloaded']
+                                total_unloaded_premium += u['premium_unloaded']
+                                total_unloaded_opc += u['opc_unloaded']
             
             # FIFO: Total pending is attributed to today's billing (the last billing)
             # Get total pending from FIFO calculation
