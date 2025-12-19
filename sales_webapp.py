@@ -2971,10 +2971,18 @@ def get_consolidated_vehicles():
         # Assign unloading details to cards
         # For trucks with only one card (either PLANT or DEPOT), show all unloading
         # For trucks with multiple cards (both PLANT and DEPOT), filter by dealer_code
+        # DEPOT cards get unloading that doesn't match any PLANT card's dealer_codes
         truck_card_count = {}
+        truck_plant_dealer_codes = {}  # Track PLANT card dealer_codes per truck
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']
             truck_card_count[truck_number] = truck_card_count.get(truck_number, 0) + 1
+            # Collect PLANT card dealer_codes
+            if truck_data.get('plant_depot') == 'PLANT':
+                if truck_number not in truck_plant_dealer_codes:
+                    truck_plant_dealer_codes[truck_number] = set()
+                for dc in truck_data.get('dealer_codes', []):
+                    truck_plant_dealer_codes[truck_number].add(str(dc))
         
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']
@@ -2982,6 +2990,7 @@ def get_consolidated_vehicles():
             # Convert dealer_codes to strings for comparison
             dealer_codes_str = set(str(dc) for dc in dealer_codes)
             all_unloading = unloading_map.get(truck_number, [])
+            plant_depot = truck_data.get('plant_depot', 'PLANT')
             
             # If this truck has only one card, show ALL unloading for the truck
             # If this truck has multiple cards (PLANT + DEPOT), filter by dealer_code
@@ -2991,11 +3000,20 @@ def get_consolidated_vehicles():
             else:
                 # Multiple cards - filter by dealer_code
                 filtered_unloading = []
+                plant_codes = truck_plant_dealer_codes.get(truck_number, set())
                 for u in all_unloading:
                     u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
-                    # Include unloading if dealer_code matches OR if no dealer_code (legacy data)
-                    if u_dealer_code in dealer_codes_str or not u_dealer_code:
-                        filtered_unloading.append(u)
+                    if plant_depot == 'DEPOT':
+                        # DEPOT card gets unloading that:
+                        # 1. Matches its own dealer_codes, OR
+                        # 2. Doesn't match any PLANT card's dealer_codes (unassigned unloading goes to DEPOT)
+                        # 3. Has no dealer_code (legacy data)
+                        if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes or not u_dealer_code:
+                            filtered_unloading.append(u)
+                    else:
+                        # PLANT card - only gets unloading matching its dealer_codes
+                        if u_dealer_code in dealer_codes_str or not u_dealer_code:
+                            filtered_unloading.append(u)
                 truck_data['unloading_details'] = filtered_unloading
             
             # Convert set to list for JSON serialization
@@ -3256,22 +3274,53 @@ def get_consolidated_vehicles():
             
             # For trucks with multiple plant_depot types, calculate card pending based on dealer_code
             # But only if there's global pending AND no opening balance (otherwise use global FIFO)
+            # DEPOT cards get unloading that doesn't match any PLANT card's dealer_codes
             has_opening = (opening_ppc > 0 or opening_premium > 0 or opening_opc > 0)
             if plant_depot_count > 1 and card_dealer_codes and not has_opening and global_pending_ppc + global_pending_premium + global_pending_opc > 0.01:
-                # Get unloading for this card's dealer_codes
-                placeholders = ','.join(['?' for _ in card_dealer_codes])
-                cursor.execute(f'''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                      AND dealer_code IN ({placeholders})
-                ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+                # Get all PLANT dealer_codes for this truck
+                cursor.execute('''
+                    SELECT DISTINCT dealer_code FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND plant_depot = 'PLANT' AND dealer_code IS NOT NULL
+                ''', (truck_number, month_start, selected_date))
+                plant_dealer_codes = set(str(row[0]) for row in cursor.fetchall())
+                
+                if plant_depot == 'DEPOT':
+                    # DEPOT card gets unloading that:
+                    # 1. Matches its own dealer_codes, OR
+                    # 2. Doesn't match any PLANT card's dealer_codes
+                    if plant_dealer_codes:
+                        plant_placeholders = ','.join(['?' for _ in plant_dealer_codes])
+                        card_placeholders = ','.join(['?' for _ in card_dealer_codes])
+                        cursor.execute(f'''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                              AND (dealer_code IN ({card_placeholders}) OR dealer_code NOT IN ({plant_placeholders}) OR dealer_code IS NULL)
+                        ''', (truck_number, month_start, selected_date, *card_dealer_codes, *plant_dealer_codes))
+                    else:
+                        # No PLANT dealer_codes, get all unloading
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                        ''', (truck_number, month_start, selected_date))
+                else:
+                    # PLANT card - only gets unloading matching its dealer_codes
+                    placeholders = ','.join(['?' for _ in card_dealer_codes])
+                    cursor.execute(f'''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                          AND dealer_code IN ({placeholders})
+                    ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+                
                 card_unloading = cursor.fetchone()
                 card_unloaded_ppc = card_unloading[0] or 0
                 card_unloaded_premium = card_unloading[1] or 0
                 card_unloaded_opc = card_unloading[2] or 0
                 
                 # Get billing for this card's dealer_codes
+                placeholders = ','.join(['?' for _ in card_dealer_codes])
                 cursor.execute(f'''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM sales_data
