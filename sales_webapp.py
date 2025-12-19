@@ -3279,10 +3279,8 @@ def get_consolidated_vehicles():
             global_pending_opc = max(0, global_billed_opc - global_unloaded_opc)
             
             # For trucks with multiple plant_depot types, calculate card pending based on dealer_code
-            # But only if there's global pending AND no opening balance (otherwise use global FIFO)
             # DEPOT cards get unloading that doesn't match any PLANT card's dealer_codes
-            has_opening = (opening_ppc > 0 or opening_premium > 0 or opening_opc > 0)
-            if plant_depot_count > 1 and card_dealer_codes and not has_opening and global_pending_ppc + global_pending_premium + global_pending_opc > 0.01:
+            if plant_depot_count > 1 and card_dealer_codes:
                 # Get all PLANT dealer_codes for this truck
                 cursor.execute('''
                     SELECT DISTINCT dealer_code FROM sales_data
