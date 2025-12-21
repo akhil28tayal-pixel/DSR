@@ -3221,10 +3221,15 @@ def get_consolidated_vehicles():
                                     for dc in dealer_codes_set:
                                         if dc not in trucks_today[existing_card_key]['dealer_codes']:
                                             trucks_today[existing_card_key]['dealer_codes'].append(dc)
-                                    # Update card pending amounts
-                                    trucks_today[existing_card_key]['card_pending_ppc'] = trucks_today[existing_card_key].get('card_pending_ppc', 0) + card_pending_ppc
-                                    trucks_today[existing_card_key]['card_pending_premium'] = trucks_today[existing_card_key].get('card_pending_premium', 0) + card_pending_premium
-                                    trucks_today[existing_card_key]['card_pending_opc'] = trucks_today[existing_card_key].get('card_pending_opc', 0) + card_pending_opc
+                                    # Update card pending amounts - include BOTH earlier pending AND today's billing
+                                    # Today's billing is also pending since it hasn't been unloaded yet
+                                    existing_today_ppc = trucks_today[existing_card_key].get('total_ppc', 0) - card_pending_ppc  # Today's billing before merge
+                                    existing_today_premium = trucks_today[existing_card_key].get('total_premium', 0) - card_pending_premium
+                                    existing_today_opc = trucks_today[existing_card_key].get('total_opc', 0) - card_pending_opc
+                                    # Card pending = earlier pending + today's billing (all is pending)
+                                    trucks_today[existing_card_key]['card_pending_ppc'] = card_pending_ppc + existing_today_ppc
+                                    trucks_today[existing_card_key]['card_pending_premium'] = card_pending_premium + existing_today_premium
+                                    trucks_today[existing_card_key]['card_pending_opc'] = card_pending_opc + existing_today_opc
                                     trucks_today[existing_card_key]['from_earlier_date'] = True
                                     merged_to_existing = True
                             
