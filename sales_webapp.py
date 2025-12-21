@@ -3202,11 +3202,12 @@ def get_consolidated_vehicles():
                                 
                                 if existing_card_key:
                                     # Add pending invoices to existing card
+                                    # Only add the PENDING amounts, not the full billing amounts
                                     trucks_today[existing_card_key]['invoices'].extend(pending_invoices)
-                                    trucks_today[existing_card_key]['total_ppc'] += total_ppc
-                                    trucks_today[existing_card_key]['total_premium'] += total_premium
-                                    trucks_today[existing_card_key]['total_opc'] += total_opc
-                                    trucks_today[existing_card_key]['total_quantity'] += total_qty
+                                    trucks_today[existing_card_key]['total_ppc'] += card_pending_ppc
+                                    trucks_today[existing_card_key]['total_premium'] += card_pending_premium
+                                    trucks_today[existing_card_key]['total_opc'] += card_pending_opc
+                                    trucks_today[existing_card_key]['total_quantity'] += card_pending_ppc + card_pending_premium + card_pending_opc
                                     trucks_today[existing_card_key]['total_value'] += total_val
                                     for dc in dealer_codes_set:
                                         if dc not in trucks_today[existing_card_key]['dealer_codes']:
@@ -3874,6 +3875,12 @@ def get_consolidated_vehicles():
                 
                 # Skip if this truck already has a pending card (from earlier_billed_trucks logic)
                 if f"{truck_number}_PLANT_pending" in trucks_today or f"{truck_number}_DEPOT_pending" in trucks_today:
+                    continue
+                
+                # Skip if this truck already has a card from today's billing (sales_data or other_dealers_billing)
+                # This prevents duplicate cards when truck has other_dealers_billing today + sales_data from earlier
+                truck_has_today_card = any(td['truck_number'] == truck_number for td in trucks_today.values())
+                if truck_has_today_card:
                     continue
                 
                 # Skip if this specific truck+date+plant_depot is already in list (from today's billing)
