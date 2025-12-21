@@ -2959,7 +2959,11 @@ def get_consolidated_vehicles():
                             'billing_date': selected_date,
                             'unloading_details': unloading_map.get(truck_number, []),
                             'other_billing': other_billings,
-                            'other_billing_added': True  # Flag to prevent double-adding
+                            'other_billing_added': True,  # Flag to prevent double-adding
+                            # Initialize card pending amounts (will be updated below)
+                            'card_pending_ppc': 0,
+                            'card_pending_premium': 0,
+                            'card_pending_opc': 0
                         }
                     
                     # Add totals from other_dealers_billing
@@ -2968,6 +2972,10 @@ def get_consolidated_vehicles():
                     trucks_today[card_key]['total_opc'] += ob.get('opc_quantity', 0)
                     trucks_today[card_key]['total_quantity'] += ob.get('total_quantity', 0)
                     trucks_today[card_key]['total_value'] += ob.get('total_value', 0)
+                    # Also add to card pending (other_dealers_billing is all pending until unloaded)
+                    trucks_today[card_key]['card_pending_ppc'] += ob.get('ppc_quantity', 0)
+                    trucks_today[card_key]['card_pending_premium'] += ob.get('premium_quantity', 0)
+                    trucks_today[card_key]['card_pending_opc'] += ob.get('opc_quantity', 0)
         
         # Assign unloading details to cards
         # For trucks with only one card (either PLANT or DEPOT), show all unloading
