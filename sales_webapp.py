@@ -3039,15 +3039,10 @@ def get_consolidated_vehicles():
         
         for truck_number in earlier_billed_trucks:
             # For trucks NOT billed today: show all pending as a card
-            # For trucks billed today: skip - they already have a card from today's billing
+            # For trucks billed today: add pending from earlier to the existing card
             is_billed_today = truck_number in actual_trucks_billed_today
             
-            # Skip if this truck already has a card from today's billing (sales_data or other_dealers_billing)
-            # The card should only show today's billing, not earlier billing
-            if is_billed_today:
-                continue
-            
-            # Calculate pending balance for this truck
+            # Calculate pending balance for this truck (from earlier billing, not including today)
             opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
             opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
             opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
@@ -3190,11 +3185,39 @@ def get_consolidated_vehicles():
                             total_qty = sum(inv['total_quantity'] for inv in pending_invoices)
                             total_val = sum(inv['total_value'] for inv in pending_invoices)
                             
-                            card_key = f"{truck_number}_{plant_depot}_pending"
                             # Calculate the pending amounts for this card (sum of pending from each invoice)
                             card_pending_ppc = sum(inv['pending_ppc'] for inv in pending_invoices)
                             card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
+                            
+                            # If truck is billed today, add pending to existing card instead of creating new one
+                            if is_billed_today:
+                                # Find the existing card for this truck
+                                existing_card_key = None
+                                for ck, td in trucks_today.items():
+                                    if td['truck_number'] == truck_number:
+                                        existing_card_key = ck
+                                        break
+                                
+                                if existing_card_key:
+                                    # Add pending invoices to existing card
+                                    trucks_today[existing_card_key]['invoices'].extend(pending_invoices)
+                                    trucks_today[existing_card_key]['total_ppc'] += total_ppc
+                                    trucks_today[existing_card_key]['total_premium'] += total_premium
+                                    trucks_today[existing_card_key]['total_opc'] += total_opc
+                                    trucks_today[existing_card_key]['total_quantity'] += total_qty
+                                    trucks_today[existing_card_key]['total_value'] += total_val
+                                    for dc in dealer_codes_set:
+                                        if dc not in trucks_today[existing_card_key]['dealer_codes']:
+                                            trucks_today[existing_card_key]['dealer_codes'].append(dc)
+                                    # Update card pending amounts
+                                    trucks_today[existing_card_key]['card_pending_ppc'] = trucks_today[existing_card_key].get('card_pending_ppc', 0) + card_pending_ppc
+                                    trucks_today[existing_card_key]['card_pending_premium'] = trucks_today[existing_card_key].get('card_pending_premium', 0) + card_pending_premium
+                                    trucks_today[existing_card_key]['card_pending_opc'] = trucks_today[existing_card_key].get('card_pending_opc', 0) + card_pending_opc
+                                    trucks_today[existing_card_key]['from_earlier_date'] = True
+                                    continue  # Don't create a new card
+                            
+                            card_key = f"{truck_number}_{plant_depot}_pending"
                             
                             trucks_today[card_key] = {
                                 'truck_number': truck_number,
