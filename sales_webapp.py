@@ -2958,7 +2958,8 @@ def get_consolidated_vehicles():
                             'total_value': 0,
                             'billing_date': selected_date,
                             'unloading_details': unloading_map.get(truck_number, []),
-                            'other_billing': other_billings
+                            'other_billing': other_billings,
+                            'other_billing_added': True  # Flag to prevent double-adding
                         }
                     
                     # Add totals from other_dealers_billing
@@ -3305,7 +3306,12 @@ def get_consolidated_vehicles():
                             }
         
         # Add other_billing quantities to truck totals
+        # ONLY for cards that were created from sales_data (not from other_billing_map)
+        # Cards from other_billing_map already have these quantities included (flagged with other_billing_added)
         for truck_number, truck_data in trucks_today.items():
+            # Skip if other_billing quantities were already added to this card
+            if truck_data.get('other_billing_added'):
+                continue
             other_billings = truck_data.get('other_billing', [])
             for ob in other_billings:
                 truck_data['total_ppc'] += ob.get('ppc_quantity', 0) or 0
