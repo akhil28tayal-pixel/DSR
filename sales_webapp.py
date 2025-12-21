@@ -3213,31 +3213,40 @@ def get_consolidated_vehicles():
                             }
                         elif has_unloading_today:
                             # No pending invoices but has unloading today - show the card with zero remaining
-                            # Use the most recent billing for card info (FIFO: unloading applies to latest billing)
+                            # Use the most recent billing DATE for card info (FIFO: unloading applies to latest billing)
                             recent = billing_rows[-1]
                             billing_date = recent[4]  # sale_date
-                            dealer_code = recent[1]
                             plant_depot = recent[3] or 'PLANT'
                             
-                            # Only show the most recent billing (which the unloading applies to)
-                            recent_invoice = {
-                                'invoice_number': recent[0],
-                                'dealer_code': recent[1],
-                                'dealer_name': recent[2],
-                                'ppc_quantity': recent[5] or 0,
-                                'premium_quantity': recent[6] or 0,
-                                'opc_quantity': recent[7] or 0,
-                                'total_quantity': (recent[5] or 0) + (recent[6] or 0) + (recent[7] or 0),
-                                'pending_ppc': 0,
-                                'pending_premium': 0,
-                                'pending_opc': 0,
-                                'total_value': recent[12] or 0,
-                                'plant_depot': recent[3],
-                                'plant_description': recent[13],
-                                'sale_date': recent[4]
-                            }
+                            # Get all invoices from the most recent billing date (same day may have multiple dealers)
+                            recent_date_invoices = []
+                            dealer_codes_set = set()
+                            for row in billing_rows:
+                                if row[4] == billing_date:  # Same billing date
+                                    recent_date_invoices.append({
+                                        'invoice_number': row[0],
+                                        'dealer_code': row[1],
+                                        'dealer_name': row[2],
+                                        'ppc_quantity': row[5] or 0,
+                                        'premium_quantity': row[6] or 0,
+                                        'opc_quantity': row[7] or 0,
+                                        'total_quantity': (row[5] or 0) + (row[6] or 0) + (row[7] or 0),
+                                        'pending_ppc': 0,
+                                        'pending_premium': 0,
+                                        'pending_opc': 0,
+                                        'total_value': row[12] or 0,
+                                        'plant_depot': row[3],
+                                        'plant_description': row[13],
+                                        'sale_date': row[4]
+                                    })
+                                    if row[1]:  # dealer_code
+                                        dealer_codes_set.add(row[1])
                             
-                            dealer_codes_set = set([dealer_code]) if dealer_code else set()
+                            total_ppc = sum(inv['ppc_quantity'] for inv in recent_date_invoices)
+                            total_premium = sum(inv['premium_quantity'] for inv in recent_date_invoices)
+                            total_opc = sum(inv['opc_quantity'] for inv in recent_date_invoices)
+                            total_qty = sum(inv['total_quantity'] for inv in recent_date_invoices)
+                            total_val = sum(inv['total_value'] for inv in recent_date_invoices)
                             
                             card_key = f"{truck_number}_{plant_depot}_unloaded_today"
                             
@@ -3245,13 +3254,13 @@ def get_consolidated_vehicles():
                                 'truck_number': truck_number,
                                 'card_key': card_key,
                                 'plant_depot': plant_depot,
-                                'invoices': [recent_invoice],
+                                'invoices': recent_date_invoices,
                                 'dealer_codes': list(dealer_codes_set),
-                                'total_ppc': recent_invoice['ppc_quantity'],
-                                'total_premium': recent_invoice['premium_quantity'],
-                                'total_opc': recent_invoice['opc_quantity'],
-                                'total_quantity': recent_invoice['total_quantity'],
-                                'total_value': recent_invoice['total_value'],
+                                'total_ppc': total_ppc,
+                                'total_premium': total_premium,
+                                'total_opc': total_opc,
+                                'total_quantity': total_qty,
+                                'total_value': total_val,
                                 'billing_date': billing_date,
                                 'unloading_details': unloading_map.get(truck_number, []),  # Today's unloading
                                 'other_billing': [],
