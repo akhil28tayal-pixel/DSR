@@ -3199,13 +3199,15 @@ def get_consolidated_vehicles():
                             card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
-                            # If truck is billed today, add pending to existing card instead of creating new one
+                            # If truck has other_dealers_billing today, merge pending to that card
+                            # But if truck has sales_data today, keep them as separate cards
                             merged_to_existing = False
                             if is_billed_today:
-                                # Find the existing card for this truck
+                                # Find the existing card for this truck - only merge if it's from other_dealers_billing
                                 existing_card_key = None
                                 for ck, td in trucks_today.items():
-                                    if td['truck_number'] == truck_number:
+                                    if td['truck_number'] == truck_number and td.get('other_billing_added'):
+                                        # Only merge with cards created from other_dealers_billing
                                         existing_card_key = ck
                                         break
                                 
