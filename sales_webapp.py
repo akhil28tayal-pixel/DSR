@@ -3039,8 +3039,56 @@ def get_consolidated_vehicles():
         
         for truck_number in earlier_billed_trucks:
             # For trucks NOT billed today: show all pending as a card
-            # For trucks billed today: show previous dates' pending as separate cards (if any)
+            # For trucks billed today: add earlier billing info to existing card instead of creating new one
             is_billed_today = truck_number in actual_trucks_billed_today
+            
+            # If truck is billed today, we need to add earlier billing to the existing card
+            # Find the existing card and add pending info to it
+            if is_billed_today:
+                # Find the existing card for this truck
+                existing_card_key = None
+                for ck, td in trucks_today.items():
+                    if td['truck_number'] == truck_number:
+                        existing_card_key = ck
+                        break
+                
+                if existing_card_key:
+                    # Add earlier billing quantities to the existing card
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                               COALESCE(SUM(opc_quantity), 0), COALESCE(SUM(total_quantity), 0),
+                               COALESCE(SUM(total_purchase_value), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck_number, month_start, selected_date))
+                    earlier_sales = cursor.fetchone()
+                    
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                               COALESCE(SUM(opc_quantity), 0), COALESCE(SUM(total_quantity), 0),
+                               COALESCE(SUM(total_purchase_value), 0)
+                        FROM other_dealers_billing
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    ''', (truck_number, month_start, selected_date))
+                    earlier_other = cursor.fetchone()
+                    
+                    # Add earlier billing to existing card totals
+                    trucks_today[existing_card_key]['total_ppc'] += (earlier_sales[0] or 0) + (earlier_other[0] or 0)
+                    trucks_today[existing_card_key]['total_premium'] += (earlier_sales[1] or 0) + (earlier_other[1] or 0)
+                    trucks_today[existing_card_key]['total_opc'] += (earlier_sales[2] or 0) + (earlier_other[2] or 0)
+                    trucks_today[existing_card_key]['total_quantity'] += (earlier_sales[3] or 0) + (earlier_other[3] or 0)
+                    trucks_today[existing_card_key]['total_value'] += (earlier_sales[4] or 0) + (earlier_other[4] or 0)
+                    
+                    # Also add opening balance if exists
+                    opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
+                    opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
+                    opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
+                    trucks_today[existing_card_key]['total_ppc'] += opening_ppc
+                    trucks_today[existing_card_key]['total_premium'] += opening_premium
+                    trucks_today[existing_card_key]['total_opc'] += opening_opc
+                    trucks_today[existing_card_key]['total_quantity'] += opening_ppc + opening_premium + opening_opc
+                
+                continue  # Skip creating a new card
             
             # Calculate pending balance for this truck
             opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
