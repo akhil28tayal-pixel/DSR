@@ -3191,6 +3191,7 @@ def get_consolidated_vehicles():
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
                             # If truck is billed today, add pending to existing card instead of creating new one
+                            merged_to_existing = False
                             if is_billed_today:
                                 # Find the existing card for this truck
                                 existing_card_key = None
@@ -3215,30 +3216,32 @@ def get_consolidated_vehicles():
                                     trucks_today[existing_card_key]['card_pending_premium'] = trucks_today[existing_card_key].get('card_pending_premium', 0) + card_pending_premium
                                     trucks_today[existing_card_key]['card_pending_opc'] = trucks_today[existing_card_key].get('card_pending_opc', 0) + card_pending_opc
                                     trucks_today[existing_card_key]['from_earlier_date'] = True
-                                    continue  # Don't create a new card
+                                    merged_to_existing = True
                             
-                            card_key = f"{truck_number}_{plant_depot}_pending"
-                            
-                            trucks_today[card_key] = {
-                                'truck_number': truck_number,
-                                'card_key': card_key,
-                                'plant_depot': plant_depot,
-                                'invoices': pending_invoices,
-                                'dealer_codes': list(dealer_codes_set),
-                                'total_ppc': total_ppc,
-                                'total_premium': total_premium,
-                                'total_opc': total_opc,
-                                'total_quantity': total_qty,
-                                'total_value': total_val,
-                                'billing_date': billing_date,
-                                'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
-                                'other_billing': [],
-                                'from_earlier_date': True,
-                                # Store card-specific pending for remaining calculation
-                                'card_pending_ppc': card_pending_ppc,
-                                'card_pending_premium': card_pending_premium,
-                                'card_pending_opc': card_pending_opc
-                            }
+                            # Skip creating new card if merged to existing
+                            if not merged_to_existing:
+                                card_key = f"{truck_number}_{plant_depot}_pending"
+                                
+                                trucks_today[card_key] = {
+                                    'truck_number': truck_number,
+                                    'card_key': card_key,
+                                    'plant_depot': plant_depot,
+                                    'invoices': pending_invoices,
+                                    'dealer_codes': list(dealer_codes_set),
+                                    'total_ppc': total_ppc,
+                                    'total_premium': total_premium,
+                                    'total_opc': total_opc,
+                                    'total_quantity': total_qty,
+                                    'total_value': total_val,
+                                    'billing_date': billing_date,
+                                    'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
+                                    'other_billing': [],
+                                    'from_earlier_date': True,
+                                    # Store card-specific pending for remaining calculation
+                                    'card_pending_ppc': card_pending_ppc,
+                                    'card_pending_premium': card_pending_premium,
+                                    'card_pending_opc': card_pending_opc
+                                }
                         elif has_unloading_today:
                             # No pending invoices but has unloading today - show the card with zero remaining
                             # Use the most recent billing DATE for card info (FIFO: unloading applies to latest billing)
