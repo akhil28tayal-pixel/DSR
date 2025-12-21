@@ -3254,6 +3254,7 @@ def get_consolidated_vehicles():
                                     'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
                                     'other_billing': [],
                                     'from_earlier_date': True,
+                                    'is_previous_day_pending': True,  # Show "Prev Day" tag
                                     # Store card-specific pending for remaining calculation
                                     'card_pending_ppc': card_pending_ppc,
                                     'card_pending_premium': card_pending_premium,
