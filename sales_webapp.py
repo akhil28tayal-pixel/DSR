@@ -3082,8 +3082,15 @@ def get_consolidated_vehicles():
             pending_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - (month_unloaded[1] or 0)
             pending_opc = opening_opc + (month_billed[2] or 0) + (month_other_billed[2] or 0) - (month_unloaded[2] or 0)
             
-            # Only add if there's positive pending material
-            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
+            # Check if this truck has unloading on the selected date
+            cursor.execute('''
+                SELECT COUNT(*) FROM vehicle_unloading
+                WHERE truck_number = ? AND unloading_date = ?
+            ''', (truck_number, selected_date))
+            has_unloading_today = cursor.fetchone()[0] > 0
+            
+            # Add if there's positive pending material OR if there's unloading on selected date
+            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01 or has_unloading_today:
                     # Get all billing info for this truck in current month (sorted by date ASC for FIFO)
                     # Include both sales_data and other_dealers_billing
                     cursor.execute('''
@@ -3203,6 +3210,64 @@ def get_consolidated_vehicles():
                                 'card_pending_ppc': card_pending_ppc,
                                 'card_pending_premium': card_pending_premium,
                                 'card_pending_opc': card_pending_opc
+                            }
+                        elif has_unloading_today:
+                            # No pending invoices but has unloading today - show the card with zero remaining
+                            # Use the most recent billing for card info
+                            recent = billing_rows[-1]
+                            billing_date = recent[4]  # sale_date
+                            dealer_code = recent[1]
+                            plant_depot = recent[3] or 'PLANT'
+                            
+                            # Build invoices list from all billing rows (all fully consumed)
+                            all_invoices = []
+                            for row in billing_rows:
+                                all_invoices.append({
+                                    'invoice_number': row[0],
+                                    'dealer_code': row[1],
+                                    'dealer_name': row[2],
+                                    'ppc_quantity': row[5] or 0,
+                                    'premium_quantity': row[6] or 0,
+                                    'opc_quantity': row[7] or 0,
+                                    'total_quantity': (row[5] or 0) + (row[6] or 0) + (row[7] or 0),
+                                    'pending_ppc': 0,
+                                    'pending_premium': 0,
+                                    'pending_opc': 0,
+                                    'total_value': row[12] or 0,
+                                    'plant_depot': row[3],
+                                    'plant_description': row[13],
+                                    'sale_date': row[4]
+                                })
+                            
+                            dealer_codes_set = set(inv['dealer_code'] for inv in all_invoices if inv['dealer_code'])
+                            total_ppc = sum(inv['ppc_quantity'] for inv in all_invoices)
+                            total_premium = sum(inv['premium_quantity'] for inv in all_invoices)
+                            total_opc = sum(inv['opc_quantity'] for inv in all_invoices)
+                            total_qty = sum(inv['total_quantity'] for inv in all_invoices)
+                            total_val = sum(inv['total_value'] for inv in all_invoices)
+                            
+                            card_key = f"{truck_number}_{plant_depot}_unloaded_today"
+                            
+                            trucks_today[card_key] = {
+                                'truck_number': truck_number,
+                                'card_key': card_key,
+                                'plant_depot': plant_depot,
+                                'invoices': all_invoices,
+                                'dealer_codes': list(dealer_codes_set),
+                                'total_ppc': total_ppc,
+                                'total_premium': total_premium,
+                                'total_opc': total_opc,
+                                'total_quantity': total_qty,
+                                'total_value': total_val,
+                                'billing_date': billing_date,
+                                'unloading_details': unloading_map.get(truck_number, []),  # Today's unloading
+                                'other_billing': [],
+                                'from_earlier_date': True,
+                                'fully_unloaded': True,  # Flag to indicate this is fully unloaded
+                                # Zero pending for remaining calculation
+                                'card_pending_ppc': 0,
+                                'card_pending_premium': 0,
+                                'card_pending_opc': 0
                             }
         
         # Add other_billing quantities to truck totals
