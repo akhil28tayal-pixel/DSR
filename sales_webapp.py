@@ -2782,7 +2782,7 @@ def get_consolidated_vehicles():
             cursor.execute(f'''
                 SELECT id, truck_number, unloading_dealer, unloading_point, 
                        ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                       notes, dealer_code, is_other_dealer, unloading_date
+                       notes, dealer_code, is_other_dealer, unloading_date, plant_depot
                 FROM vehicle_unloading 
                 WHERE truck_number IN ({placeholders}) AND unloading_date >= ? AND unloading_date <= ?
             ''', (*truck_numbers_today, month_start, selected_date))
@@ -2803,14 +2803,15 @@ def get_consolidated_vehicles():
                     'notes': row[8],
                     'dealer_code': row[9],
                     'is_other_dealer': bool(row[10]) if row[10] is not None else False,
-                    'unloading_date': row[11]
+                    'unloading_date': row[11],
+                    'plant_depot': row[12]
                 })
         
         # Get unloading details for today only (for display)
         cursor.execute('''
             SELECT id, truck_number, unloading_dealer, unloading_point, 
                    ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
-                   notes, dealer_code, is_other_dealer, unloading_date
+                   notes, dealer_code, is_other_dealer, unloading_date, plant_depot
             FROM vehicle_unloading 
             WHERE unloading_date = ?
         ''', (selected_date,))
@@ -2846,7 +2847,8 @@ def get_consolidated_vehicles():
                 'notes': row[8],
                 'dealer_code': row[9],
                 'is_other_dealer': bool(row[10]) if row[10] is not None else False,
-                'unloading_date': row[11]
+                'unloading_date': row[11],
+                'plant_depot': row[12]
             })
         
         # Create other billing lookup by truck_number
@@ -2993,11 +2995,12 @@ def get_consolidated_vehicles():
                 for dc in truck_data.get('dealer_codes', []):
                     truck_plant_dealer_codes[truck_number].add(str(dc))
         
-        # DEBUG: Log for HR58D1569
-        if 'HR58D1569' in [td['truck_number'] for td in trucks_today.values()]:
-            print(f"DEBUG HR58D1569: truck_card_count={truck_card_count.get('HR58D1569')}")
-            print(f"DEBUG HR58D1569: truck_plant_dealer_codes={truck_plant_dealer_codes.get('HR58D1569')}")
-            print(f"DEBUG HR58D1569: unloading_map={unloading_map.get('HR58D1569')}")
+        # DEBUG: Log for HR55AZ1569
+        if 'HR55AZ1569' in [td['truck_number'] for td in trucks_today.values()]:
+            print(f"DEBUG HR55AZ1569: truck_card_count={truck_card_count.get('HR55AZ1569')}")
+            print(f"DEBUG HR55AZ1569: truck_plant_dealer_codes={truck_plant_dealer_codes.get('HR55AZ1569')}")
+            print(f"DEBUG HR55AZ1569: unloading_map={unloading_map.get('HR55AZ1569')}")
+            print(f"DEBUG HR55AZ1569: all unloading keys={list(unloading_map.keys())}")
         
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']
@@ -3008,28 +3011,42 @@ def get_consolidated_vehicles():
             plant_depot = truck_data.get('plant_depot', 'PLANT')
             
             # If this truck has only one card, show ALL unloading for the truck
-            # If this truck has multiple cards (PLANT + DEPOT), filter by dealer_code
+            # If this truck has multiple cards (PLANT + DEPOT), filter by plant_depot first, then dealer_code
             if truck_card_count.get(truck_number, 1) == 1:
                 # Single card - show all unloading
                 truck_data['unloading_details'] = all_unloading
             else:
-                # Multiple cards - filter by dealer_code
+                # Multiple cards - filter by plant_depot and dealer_code
                 filtered_unloading = []
                 plant_codes = truck_plant_dealer_codes.get(truck_number, set())
                 for u in all_unloading:
                     u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
-                    if plant_depot == 'DEPOT':
-                        # DEPOT card gets unloading that:
-                        # 1. Matches its own dealer_codes, OR
-                        # 2. Doesn't match any PLANT card's dealer_codes (unassigned unloading goes to DEPOT)
-                        # 3. Has no dealer_code (legacy data)
-                        if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes or not u_dealer_code:
+                    u_plant_depot = u.get('plant_depot', '').upper() if u.get('plant_depot') else ''
+                    
+                    if truck_number == 'HR55AZ1569':
+                        print(f"DEBUG FILTERING card={card_key}, card_plant_depot={plant_depot}, u_plant_depot={u_plant_depot}, match={u_plant_depot == plant_depot}")
+                    
+                    # First priority: Match by plant_depot if unloading has it specified
+                    if u_plant_depot:
+                        if u_plant_depot == plant_depot:
                             filtered_unloading.append(u)
                     else:
-                        # PLANT card - only gets unloading matching its dealer_codes
-                        if u_dealer_code in dealer_codes_str or not u_dealer_code:
-                            filtered_unloading.append(u)
+                        # Legacy unloading without plant_depot - use dealer_code matching
+                        if plant_depot == 'DEPOT':
+                            # DEPOT card gets unloading that:
+                            # 1. Matches its own dealer_codes, OR
+                            # 2. Doesn't match any PLANT card's dealer_codes (unassigned unloading goes to DEPOT)
+                            # 3. Has no dealer_code (legacy data)
+                            if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes or not u_dealer_code:
+                                filtered_unloading.append(u)
+                        else:
+                            # PLANT card - only gets unloading matching its dealer_codes
+                            if u_dealer_code in dealer_codes_str or not u_dealer_code:
+                                filtered_unloading.append(u)
                 truck_data['unloading_details'] = filtered_unloading
+                
+                if truck_number == 'HR55AZ1569':
+                    print(f"DEBUG FILTERED card={card_key}, filtered_count={len(filtered_unloading)}")
             
             # Convert set to list for JSON serialization
             truck_data['dealer_codes'] = list(dealer_codes)
@@ -3251,7 +3268,7 @@ def get_consolidated_vehicles():
                                     'total_quantity': total_qty,
                                     'total_value': total_val,
                                     'billing_date': billing_date,
-                                    'unloading_details': unloading_map.get(truck_number, []),  # Only today's unloading
+                                    'unloading_details': [],  # Earlier date cards should not show today's unloading
                                     'other_billing': [],
                                     'from_earlier_date': True,
                                     'is_previous_day_pending': True,  # Show "Prev Day" tag
@@ -3260,66 +3277,8 @@ def get_consolidated_vehicles():
                                     'card_pending_premium': card_pending_premium,
                                     'card_pending_opc': card_pending_opc
                                 }
-                        elif has_unloading_today:
-                            # No pending invoices but has unloading today - show the card with zero remaining
-                            # Use the most recent billing DATE for card info (FIFO: unloading applies to latest billing)
-                            recent = billing_rows[-1]
-                            billing_date = recent[4]  # sale_date
-                            plant_depot = recent[3] or 'PLANT'
-                            
-                            # Get all invoices from the most recent billing date (same day may have multiple dealers)
-                            recent_date_invoices = []
-                            dealer_codes_set = set()
-                            for row in billing_rows:
-                                if row[4] == billing_date:  # Same billing date
-                                    recent_date_invoices.append({
-                                        'invoice_number': row[0],
-                                        'dealer_code': row[1],
-                                        'dealer_name': row[2],
-                                        'ppc_quantity': row[5] or 0,
-                                        'premium_quantity': row[6] or 0,
-                                        'opc_quantity': row[7] or 0,
-                                        'total_quantity': (row[5] or 0) + (row[6] or 0) + (row[7] or 0),
-                                        'pending_ppc': 0,
-                                        'pending_premium': 0,
-                                        'pending_opc': 0,
-                                        'total_value': row[12] or 0,
-                                        'plant_depot': row[3],
-                                        'plant_description': row[13],
-                                        'sale_date': row[4]
-                                    })
-                                    if row[1]:  # dealer_code
-                                        dealer_codes_set.add(row[1])
-                            
-                            total_ppc = sum(inv['ppc_quantity'] for inv in recent_date_invoices)
-                            total_premium = sum(inv['premium_quantity'] for inv in recent_date_invoices)
-                            total_opc = sum(inv['opc_quantity'] for inv in recent_date_invoices)
-                            total_qty = sum(inv['total_quantity'] for inv in recent_date_invoices)
-                            total_val = sum(inv['total_value'] for inv in recent_date_invoices)
-                            
-                            card_key = f"{truck_number}_{plant_depot}_unloaded_today"
-                            
-                            trucks_today[card_key] = {
-                                'truck_number': truck_number,
-                                'card_key': card_key,
-                                'plant_depot': plant_depot,
-                                'invoices': recent_date_invoices,
-                                'dealer_codes': list(dealer_codes_set),
-                                'total_ppc': total_ppc,
-                                'total_premium': total_premium,
-                                'total_opc': total_opc,
-                                'total_quantity': total_qty,
-                                'total_value': total_val,
-                                'billing_date': billing_date,
-                                'unloading_details': unloading_map.get(truck_number, []),  # Today's unloading
-                                'other_billing': [],
-                                'from_earlier_date': True,
-                                'fully_unloaded': True,  # Flag to indicate this is fully unloaded
-                                # Zero pending for remaining calculation
-                                'card_pending_ppc': 0,
-                                'card_pending_premium': 0,
-                                'card_pending_opc': 0
-                            }
+                        # Don't create cards for fully unloaded earlier billings
+                        # Only show cards with pending material
         
         # Add other_billing quantities to truck totals
         # ONLY for cards that were created from sales_data (not from other_billing_map)
@@ -3399,58 +3358,27 @@ def get_consolidated_vehicles():
             global_pending_premium = max(0, global_billed_premium - global_unloaded_premium)
             global_pending_opc = max(0, global_billed_opc - global_unloaded_opc)
             
-            # For trucks with multiple plant_depot types, calculate card pending based on dealer_code
-            # DEPOT cards get unloading that doesn't match any PLANT card's dealer_codes
+            # For trucks with multiple plant_depot types, calculate card pending based on plant_depot
             if plant_depot_count > 1 and card_dealer_codes:
-                # Get all PLANT dealer_codes for this truck
+                # Get unloading for this card by matching plant_depot
                 cursor.execute('''
-                    SELECT DISTINCT dealer_code FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND plant_depot = 'PLANT' AND dealer_code IS NOT NULL
-                ''', (truck_number, month_start, selected_date))
-                plant_dealer_codes = set(str(row[0]) for row in cursor.fetchall())
-                
-                if plant_depot == 'DEPOT':
-                    # DEPOT card gets unloading that:
-                    # 1. Matches its own dealer_codes, OR
-                    # 2. Doesn't match any PLANT card's dealer_codes
-                    if plant_dealer_codes:
-                        plant_placeholders = ','.join(['?' for _ in plant_dealer_codes])
-                        card_placeholders = ','.join(['?' for _ in card_dealer_codes])
-                        cursor.execute(f'''
-                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                            FROM vehicle_unloading
-                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                              AND (dealer_code IN ({card_placeholders}) OR dealer_code NOT IN ({plant_placeholders}) OR dealer_code IS NULL)
-                        ''', (truck_number, month_start, selected_date, *card_dealer_codes, *plant_dealer_codes))
-                    else:
-                        # No PLANT dealer_codes, get all unloading
-                        cursor.execute('''
-                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                            FROM vehicle_unloading
-                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                        ''', (truck_number, month_start, selected_date))
-                else:
-                    # PLANT card - only gets unloading matching its dealer_codes
-                    placeholders = ','.join(['?' for _ in card_dealer_codes])
-                    cursor.execute(f'''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                          AND dealer_code IN ({placeholders})
-                    ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                      AND plant_depot = ?
+                ''', (truck_number, month_start, selected_date, plant_depot))
                 
                 card_unloading = cursor.fetchone()
                 card_unloaded_ppc = card_unloading[0] or 0
                 card_unloaded_premium = card_unloading[1] or 0
                 card_unloaded_opc = card_unloading[2] or 0
                 
-                # Get billing for this card's dealer_codes
-                placeholders = ','.join(['?' for _ in card_dealer_codes])
-                cursor.execute(f'''
+                # Get billing for this card by matching plant_depot
+                cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND dealer_code IN ({placeholders})
-                ''', (truck_number, month_start, selected_date, *card_dealer_codes))
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ? AND plant_depot = ?
+                ''', (truck_number, month_start, selected_date, plant_depot))
                 card_billing = cursor.fetchone()
                 card_billed_ppc = card_billing[0] or 0
                 card_billed_premium = card_billing[1] or 0
@@ -3473,6 +3401,9 @@ def get_consolidated_vehicles():
                 'premium': total_pending_premium,
                 'opc': total_pending_opc
             }
+            
+            if truck_number in ['HR55AZ1569', 'HR58D1569']:
+                print(f"DEBUG FIFO card={card_key}, total_pending_ppc={total_pending_ppc}, card_billed_ppc={card_billed_ppc if 'card_billed_ppc' in locals() else 'N/A'}, card_unloaded_ppc={card_unloaded_ppc if 'card_unloaded_ppc' in locals() else 'N/A'}")
             
             truck_data['has_pending_previous'] = has_pending_previous
             truck_data['previous_pending_qty'] = round(previous_pending_qty, 2)
@@ -3517,28 +3448,46 @@ def get_consolidated_vehicles():
             if truck_number in unloading_map:
                 for u in unloading_map[truck_number]:
                     # If single card, count all unloading
-                    # If multiple cards, filter by dealer_code
+                    # If multiple cards, filter by plant_depot first, then dealer_code
                     if truck_card_count.get(truck_number, 1) == 1:
                         total_unloaded_ppc += u['ppc_unloaded']
                         total_unloaded_premium += u['premium_unloaded']
                         total_unloaded_opc += u['opc_unloaded']
                     else:
                         u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
-                        if card_plant_depot == 'DEPOT':
-                            # DEPOT card gets unloading that:
-                            # 1. Matches its own dealer_codes, OR
-                            # 2. Doesn't match any PLANT card's dealer_codes
-                            # 3. Has no dealer_code (legacy data)
-                            if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes_for_truck or not u_dealer_code:
+                        u_plant_depot = u.get('plant_depot', '').upper() if u.get('plant_depot') else ''
+                        
+                        if truck_number == 'HR55AZ1569':
+                            print(f"DEBUG REMAINING CALC card={card_key}, card_plant_depot={card_plant_depot}, u_plant_depot={u_plant_depot}, u_ppc={u['ppc_unloaded']}, u_premium={u['premium_unloaded']}")
+                        
+                        # First priority: Match by plant_depot if unloading has it specified
+                        if u_plant_depot:
+                            if u_plant_depot == card_plant_depot:
                                 total_unloaded_ppc += u['ppc_unloaded']
                                 total_unloaded_premium += u['premium_unloaded']
                                 total_unloaded_opc += u['opc_unloaded']
+                                if truck_number == 'HR55AZ1569':
+                                    print(f"DEBUG REMAINING CALC MATCHED by plant_depot, added ppc={u['ppc_unloaded']}, premium={u['premium_unloaded']}")
                         else:
-                            # PLANT card - only gets unloading matching its dealer_codes
-                            if u_dealer_code in dealer_codes_str or not u_dealer_code:
-                                total_unloaded_ppc += u['ppc_unloaded']
-                                total_unloaded_premium += u['premium_unloaded']
-                                total_unloaded_opc += u['opc_unloaded']
+                            # Legacy unloading without plant_depot - use dealer_code matching
+                            if card_plant_depot == 'DEPOT':
+                                # DEPOT card gets unloading that:
+                                # 1. Matches its own dealer_codes, OR
+                                # 2. Doesn't match any PLANT card's dealer_codes
+                                # 3. Has no dealer_code (legacy data)
+                                if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes_for_truck or not u_dealer_code:
+                                    total_unloaded_ppc += u['ppc_unloaded']
+                                    total_unloaded_premium += u['premium_unloaded']
+                                    total_unloaded_opc += u['opc_unloaded']
+                            else:
+                                # PLANT card - only gets unloading matching its dealer_codes
+                                if u_dealer_code in dealer_codes_str or not u_dealer_code:
+                                    total_unloaded_ppc += u['ppc_unloaded']
+                                    total_unloaded_premium += u['premium_unloaded']
+                                    total_unloaded_opc += u['opc_unloaded']
+            
+            if truck_number == 'HR55AZ1569':
+                print(f"DEBUG REMAINING CALC FINAL card={card_key}, total_unloaded_ppc={total_unloaded_ppc}, total_unloaded_premium={total_unloaded_premium}")
             
             # FIFO: Total pending is attributed to today's billing (the last billing)
             # Get total pending from FIFO calculation
@@ -4351,6 +4300,7 @@ def save_vehicle_unloading():
         unloading_date = data.get('unloading_date')
         invoice_number = data.get('invoice_number')
         dealer_code = data.get('dealer_code')
+        plant_depot = data.get('plant_depot')
         unloading_dealer = data.get('unloading_dealer')
         unloading_point = data.get('unloading_point')
         ppc_unloaded = data.get('ppc_unloaded', 0) or 0
@@ -4447,10 +4397,10 @@ def save_vehicle_unloading():
         # Insert new unloading record (allows multiple unloadings per vehicle)
         cursor.execute('''
             INSERT INTO vehicle_unloading 
-            (truck_number, unloading_date, invoice_number, dealer_code, unloading_dealer, 
+            (truck_number, unloading_date, invoice_number, dealer_code, plant_depot, unloading_dealer, 
              unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, notes, is_other_dealer)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (truck_number, unloading_date, invoice_number, dealer_code, unloading_dealer,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (truck_number, unloading_date, invoice_number, dealer_code, plant_depot, unloading_dealer,
               unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, total_unloaded, notes, is_other_dealer))
         
         db.conn.commit()

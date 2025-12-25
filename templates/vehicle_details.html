@@ -969,7 +969,7 @@
                         </td>
                         <td class="text-center">
                             ${(vehicle.remaining_total !== undefined ? vehicle.remaining_total > 0.01 : !isFullyUnloaded) || isRebilled ? `
-                                <button class="btn btn-info action-btn me-1" onclick="openUnloadingModal('${actualTruckNumber}', '${date}', ${(vehicle.remaining_total !== undefined ? vehicle.remaining_total : (vehicle.total_quantity + previousPendingQty)).toFixed(2)}, ${vehicle.total_ppc}, ${vehicle.total_premium}, ${vehicle.total_opc}, ${(vehicle.remaining_ppc !== undefined ? vehicle.remaining_ppc : (remainingPpc + previousPendingQty)).toFixed(2)}, ${(vehicle.remaining_premium !== undefined ? vehicle.remaining_premium : remainingPremium).toFixed(2)}, ${(vehicle.remaining_opc !== undefined ? vehicle.remaining_opc : remainingOpc).toFixed(2)})" title="Add Unloading">
+                                <button class="btn btn-info action-btn me-1" onclick="openUnloadingModal('${actualTruckNumber}', '${date}', ${(vehicle.remaining_total !== undefined ? vehicle.remaining_total : (vehicle.total_quantity + previousPendingQty)).toFixed(2)}, ${vehicle.total_ppc}, ${vehicle.total_premium}, ${vehicle.total_opc}, ${(vehicle.remaining_ppc !== undefined ? vehicle.remaining_ppc : (remainingPpc + previousPendingQty)).toFixed(2)}, ${(vehicle.remaining_premium !== undefined ? vehicle.remaining_premium : remainingPremium).toFixed(2)}, ${(vehicle.remaining_opc !== undefined ? vehicle.remaining_opc : remainingOpc).toFixed(2)}, '${vehicle.plant_depot || 'PLANT'}', '${vehicle.dealer_codes ? vehicle.dealer_codes.join(',') : ''}')" title="Add Unloading">
                                     <i class="bi bi-box-arrow-down"></i>
                                 </button>
                             ` : `
@@ -1162,8 +1162,10 @@
         
         // Store remaining quantities for validation
         let currentRemainingPpc = 0, currentRemainingPremium = 0, currentRemainingOpc = 0;
+        let currentPlantDepot = 'PLANT';
+        let currentDealerCodes = '';
         
-        function openUnloadingModal(truckNumber, date, totalQty, ppc, premium, opc, remainingPpc, remainingPremium, remainingOpc) {
+        function openUnloadingModal(truckNumber, date, totalQty, ppc, premium, opc, remainingPpc, remainingPremium, remainingOpc, plantDepot, dealerCodes) {
             document.getElementById('modalTruckNumber').value = truckNumber;
             document.getElementById('modalBillingDate').value = date;
             
@@ -1171,6 +1173,8 @@
             currentRemainingPpc = remainingPpc || ppc;
             currentRemainingPremium = remainingPremium || premium;
             currentRemainingOpc = remainingOpc || opc;
+            currentPlantDepot = plantDepot || 'PLANT';
+            currentDealerCodes = dealerCodes || '';
             
             document.getElementById('displayTruckNumber').value = truckNumber;
             document.getElementById('displayTotalQuantity').value = `Remaining: PPC: ${currentRemainingPpc} MT, Premium: ${currentRemainingPremium} MT, OPC: ${currentRemainingOpc} MT`;
@@ -1319,6 +1323,7 @@
                         truck_number: truckNumber,
                         unloading_date: billingDate,
                         dealer_code: dealerCode,
+                        plant_depot: currentPlantDepot,
                         unloading_dealer: dealerName,
                         unloading_point: unloadingPoint,
                         ppc_unloaded: ppcUnloaded,
