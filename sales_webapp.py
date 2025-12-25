@@ -2995,12 +2995,12 @@ def get_consolidated_vehicles():
                 for dc in truck_data.get('dealer_codes', []):
                     truck_plant_dealer_codes[truck_number].add(str(dc))
         
-        # DEBUG: Log for HR55AZ1569
-        if 'HR55AZ1569' in [td['truck_number'] for td in trucks_today.values()]:
-            print(f"DEBUG HR55AZ1569: truck_card_count={truck_card_count.get('HR55AZ1569')}")
-            print(f"DEBUG HR55AZ1569: truck_plant_dealer_codes={truck_plant_dealer_codes.get('HR55AZ1569')}")
-            print(f"DEBUG HR55AZ1569: unloading_map={unloading_map.get('HR55AZ1569')}")
-            print(f"DEBUG HR55AZ1569: all unloading keys={list(unloading_map.keys())}")
+        # DEBUG: Log for HR55AZ1569 and HR58D1569
+        for debug_truck in ['HR55AZ1569', 'HR58D1569']:
+            if debug_truck in [td['truck_number'] for td in trucks_today.values()]:
+                print(f"DEBUG {debug_truck}: truck_card_count={truck_card_count.get(debug_truck)}")
+                print(f"DEBUG {debug_truck}: truck_plant_dealer_codes={truck_plant_dealer_codes.get(debug_truck)}")
+                print(f"DEBUG {debug_truck}: unloading_map={unloading_map.get(debug_truck)}")
         
         for card_key, truck_data in trucks_today.items():
             truck_number = truck_data['truck_number']
@@ -3023,7 +3023,7 @@ def get_consolidated_vehicles():
                     u_dealer_code = str(u.get('dealer_code', '')) if u.get('dealer_code') else ''
                     u_plant_depot = u.get('plant_depot', '').upper() if u.get('plant_depot') else ''
                     
-                    if truck_number == 'HR55AZ1569':
+                    if truck_number in ['HR55AZ1569', 'HR58D1569']:
                         print(f"DEBUG FILTERING card={card_key}, card_plant_depot={plant_depot}, u_plant_depot={u_plant_depot}, match={u_plant_depot == plant_depot}")
                     
                     # First priority: Match by plant_depot if unloading has it specified
@@ -3045,8 +3045,9 @@ def get_consolidated_vehicles():
                                 filtered_unloading.append(u)
                 truck_data['unloading_details'] = filtered_unloading
                 
-                if truck_number == 'HR55AZ1569':
+                if truck_number in ['HR55AZ1569', 'HR58D1569']:
                     print(f"DEBUG FILTERED card={card_key}, filtered_count={len(filtered_unloading)}")
+                    print(f"DEBUG ASSIGNED unloading_details to truck_data, count={len(truck_data.get('unloading_details', []))}")
             
             # Convert set to list for JSON serialization
             truck_data['dealer_codes'] = list(dealer_codes)
@@ -3540,7 +3541,12 @@ def get_consolidated_vehicles():
             
             if not today_has_unloading:
                 # All unloading went to previous billings, not today's
-                truck_data['unloading_details'] = []
+                # BUT: Keep unloading_details if they were explicitly matched by plant_depot
+                # (This happens when there are multiple cards with different plant_depot values)
+                if truck_card_count.get(truck_number, 1) == 1:
+                    # Single card - clear if no unloading for today
+                    truck_data['unloading_details'] = []
+                # For multiple cards, keep the filtered unloading_details as they were matched by plant_depot
             elif truck_data.get('from_earlier_date'):
                 # For pending vehicles from earlier dates, show all today's unloading without filtering
                 # unloading_details is already set from unloading_map
