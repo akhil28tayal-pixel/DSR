@@ -3028,40 +3028,18 @@ def get_consolidated_vehicles():
                         pending_card_key = ck
                         break
                 
-                # If this card is today's billing and there's a pending card, assign only unloading
-                # for product types that are NOT in the pending card (FIFO logic)
+                # If this card is today's billing and there's a pending card, assign unloading
+                # that wasn't already assigned to the pending card (FIFO logic)
                 if pending_card_key:
                     pending_card = trucks_today[pending_card_key]
-                    # Get which product types have pending in the prev day card
-                    pending_has_ppc = pending_card.get('card_pending_ppc', 0) > 0.01
-                    pending_has_premium = pending_card.get('card_pending_premium', 0) > 0.01
-                    pending_has_opc = pending_card.get('card_pending_opc', 0) > 0.01
+                    # Get the IDs of unloading records assigned to the pending card
+                    pending_card_unloading_ids = set(u.get('id') for u in pending_card.get('unloading_details', []))
                     
-                    # Filter unloading: only include if it has quantities for product types
-                    # that are NOT pending in the prev day card
+                    # Assign remaining unloading (not in pending card) to today's card
                     today_card_unloading = []
                     for unload in all_unloading:
-                        ppc_unloaded = unload.get('ppc_unloaded', 0)
-                        premium_unloaded = unload.get('premium_unloaded', 0)
-                        opc_unloaded = unload.get('opc_unloaded', 0)
-                        
-                        # Include if unloading has quantities for non-pending product types
-                        include_unloading = True
-                        
-                        # Exclude if unloading has quantities for pending product types
-                        if ppc_unloaded > 0 and pending_has_ppc:
-                            include_unloading = False
-                        if premium_unloaded > 0 and pending_has_premium:
-                            include_unloading = False
-                        if opc_unloaded > 0 and pending_has_opc:
-                            include_unloading = False
-                        
-                        # Also check that at least one product type is for today's card
-                        has_today_product = (ppc_unloaded > 0 and not pending_has_ppc) or \
-                                           (premium_unloaded > 0 and not pending_has_premium) or \
-                                           (opc_unloaded > 0 and not pending_has_opc)
-                        
-                        if include_unloading and has_today_product:
+                        # Check if this unloading was already assigned to pending card by ID
+                        if unload.get('id') not in pending_card_unloading_ids:
                             today_card_unloading.append(unload)
                     
                     truck_data['unloading_details'] = today_card_unloading
@@ -3318,46 +3296,59 @@ def get_consolidated_vehicles():
                                 
                                 # For vehicles billed today, assign today's unloading to this prev day card (FIFO)
                                 # Only assign unloading that matches the product types in pending invoices
+                                # AND only up to the pending amount (don't assign excess unloading)
                                 prev_day_unloading = []
                                 if is_billed_today:
                                     # Get today's unloading for this truck
                                     all_today_unloading = unloading_map.get(truck_number, [])
                                     
-                                    # Check which product types have pending in this card
-                                    has_pending_ppc = card_pending_ppc > 0.01
-                                    has_pending_premium = card_pending_premium > 0.01
-                                    has_pending_opc = card_pending_opc > 0.01
+                                    # Track cumulative unloading assigned to this card
+                                    cumulative_ppc = 0
+                                    cumulative_premium = 0
+                                    cumulative_opc = 0
                                     
                                     # Only assign unloading for product types that have pending
-                                    # Simple rule: only include unloading if it has non-zero quantity for a pending product type
-                                    # AND zero quantity for non-pending product types
+                                    # Stop once we've covered the pending amount
                                     for unload in all_today_unloading:
                                         ppc_unloaded = unload.get('ppc_unloaded', 0)
                                         premium_unloaded = unload.get('premium_unloaded', 0)
                                         opc_unloaded = unload.get('opc_unloaded', 0)
                                         
-                                        # Include this unloading if:
-                                        # - It has PPC and card has PPC pending (and no OPC/Premium unless card has those pending too)
-                                        # - It has Premium and card has Premium pending (and no PPC/OPC unless card has those pending too)
-                                        # - It has OPC and card has OPC pending (and no PPC/Premium unless card has those pending too)
-                                        
+                                        # Check if this unloading should be assigned to this card
+                                        # Include if: unloading has quantities ONLY for product types with pending
+                                        # AND we haven't exceeded the pending amount
                                         include_unloading = True
                                         
                                         # Check each product type
-                                        if ppc_unloaded > 0 and not has_pending_ppc:
-                                            include_unloading = False
-                                        if premium_unloaded > 0 and not has_pending_premium:
-                                            include_unloading = False
-                                        if opc_unloaded > 0 and not has_pending_opc:
-                                            include_unloading = False
+                                        if ppc_unloaded > 0:
+                                            if card_pending_ppc > 0.01 and cumulative_ppc < card_pending_ppc:
+                                                # Include, but may need to limit
+                                                pass
+                                            else:
+                                                include_unloading = False
                                         
-                                        # Also check that at least one product type matches
-                                        has_any_match = (ppc_unloaded > 0 and has_pending_ppc) or \
-                                                       (premium_unloaded > 0 and has_pending_premium) or \
-                                                       (opc_unloaded > 0 and has_pending_opc)
+                                        if premium_unloaded > 0:
+                                            if card_pending_premium > 0.01 and cumulative_premium < card_pending_premium:
+                                                pass
+                                            else:
+                                                include_unloading = False
                                         
-                                        if include_unloading and has_any_match:
+                                        if opc_unloaded > 0:
+                                            if card_pending_opc > 0.01 and cumulative_opc < card_pending_opc:
+                                                pass
+                                            else:
+                                                include_unloading = False
+                                        
+                                        # Also check that at least one product type has pending
+                                        has_any_pending = (ppc_unloaded > 0 and card_pending_ppc > 0.01) or \
+                                                         (premium_unloaded > 0 and card_pending_premium > 0.01) or \
+                                                         (opc_unloaded > 0 and card_pending_opc > 0.01)
+                                        
+                                        if include_unloading and has_any_pending:
                                             prev_day_unloading.append(unload)
+                                            cumulative_ppc += ppc_unloaded
+                                            cumulative_premium += premium_unloaded
+                                            cumulative_opc += opc_unloaded
                                 
                                 trucks_today[card_key] = {
                                     'truck_number': truck_number,
