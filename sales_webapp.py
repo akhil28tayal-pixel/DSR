@@ -3195,6 +3195,7 @@ def get_consolidated_vehicles():
                         # Now consume invoices in FIFO order (by date) until we've consumed enough
                         # billing_rows is already sorted by date ASC
                         pending_invoices = []
+                        last_pending_date = None
                         for row in billing_rows:
                             inv_ppc = row[5] or 0
                             inv_premium = row[6] or 0
@@ -3217,6 +3218,7 @@ def get_consolidated_vehicles():
                             # If any remaining, this invoice is pending
                             # Store original billed amounts for display, pending amounts for remaining calculation
                             if remaining_ppc > 0.01 or remaining_premium > 0.01 or remaining_opc > 0.01:
+                                last_pending_date = row[4]
                                 pending_invoices.append({
                                     'invoice_number': row[0],
                                     'dealer_code': row[1],
@@ -3233,6 +3235,35 @@ def get_consolidated_vehicles():
                                     'plant_description': row[13],
                                     'sale_date': row[4]
                                 })
+                        
+                        # Include all invoices from the same date as the last pending invoice
+                        # This shows the complete billing for that date, not just the pending part
+                        if last_pending_date and pending_invoices:
+                            for row in billing_rows:
+                                if row[4] == last_pending_date:
+                                    # Check if this invoice is already in pending_invoices
+                                    invoice_num = row[0]
+                                    if not any(inv['invoice_number'] == invoice_num for inv in pending_invoices):
+                                        # Add this invoice with 0 pending (fully consumed but same date)
+                                        inv_ppc = row[5] or 0
+                                        inv_premium = row[6] or 0
+                                        inv_opc = row[7] or 0
+                                        pending_invoices.append({
+                                            'invoice_number': row[0],
+                                            'dealer_code': row[1],
+                                            'dealer_name': row[2],
+                                            'ppc_quantity': inv_ppc,
+                                            'premium_quantity': inv_premium,
+                                            'opc_quantity': inv_opc,
+                                            'total_quantity': inv_ppc + inv_premium + inv_opc,
+                                            'pending_ppc': 0,  # Fully consumed
+                                            'pending_premium': 0,
+                                            'pending_opc': 0,
+                                            'total_value': row[12] or 0,
+                                            'plant_depot': row[3],
+                                            'plant_description': row[13],
+                                            'sale_date': row[4]
+                                        })
                         
                         # Create card if there are pending invoices OR if there's unloading today
                         # (to show vehicles that become fully unloaded on selected date)
