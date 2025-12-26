@@ -3672,9 +3672,12 @@ def get_consolidated_vehicles():
                 card_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
                 card_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
                 
-                remaining_ppc = max(0, truck_data.get('card_pending_ppc', total_pending_ppc) - card_unloaded_ppc)
-                remaining_premium = max(0, truck_data.get('card_pending_premium', total_pending_premium) - card_unloaded_premium)
-                remaining_opc = max(0, truck_data.get('card_pending_opc', total_pending_opc) - card_unloaded_opc)
+                # For Prev Day cards, use total_ppc (actual billed) instead of card_pending_ppc
+                # because card_pending_ppc only includes invoices with pending > 0 after FIFO,
+                # but we've added all invoices from that date to show complete billing
+                remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
+                remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
+                remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
             else:
                 # For today's cards, use simple calculation like dealer balance page:
                 # Remaining = Today's Billed - Today's Unloaded (no complex FIFO)
