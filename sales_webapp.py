@@ -3241,30 +3241,32 @@ def get_consolidated_vehicles():
                             if pending_invoices:
                                 recent = pending_invoices[-1]
                             else:
-                                # No pending but has unloading today - use most recent billed invoice
-                                last_row = billing_rows[-1]
-                                recent = {
-                                    'sale_date': last_row[4],
-                                    'dealer_code': last_row[1],
-                                    'plant_depot': last_row[3] or 'PLANT'
-                                }
-                                # Create a zero-quantity invoice entry for display
-                                pending_invoices = [{
-                                    'invoice_number': last_row[0],
-                                    'dealer_code': last_row[1],
-                                    'dealer_name': last_row[2],
-                                    'ppc_quantity': 0,
-                                    'premium_quantity': 0,
-                                    'opc_quantity': 0,
-                                    'total_quantity': 0,
-                                    'pending_ppc': 0,
-                                    'pending_premium': 0,
-                                    'pending_opc': 0,
-                                    'total_value': 0,
-                                    'plant_depot': last_row[3],
-                                    'plant_description': last_row[13],
-                                    'sale_date': last_row[4]
-                                }]
+                                # No pending but has unloading today - use only the most recent billing date's invoices
+                                # This shows the billing that was unloaded on the selected date
+                                most_recent_date = billing_rows[-1][4]  # sale_date of last invoice
+                                pending_invoices = []
+                                for row in billing_rows:
+                                    if row[4] == most_recent_date:  # Only invoices from most recent billing date
+                                        inv_ppc = row[5] or 0
+                                        inv_premium = row[6] or 0
+                                        inv_opc = row[7] or 0
+                                        pending_invoices.append({
+                                            'invoice_number': row[0],
+                                            'dealer_code': row[1],
+                                            'dealer_name': row[2],
+                                            'ppc_quantity': inv_ppc,  # Show actual billed amount
+                                            'premium_quantity': inv_premium,
+                                            'opc_quantity': inv_opc,
+                                            'total_quantity': inv_ppc + inv_premium + inv_opc,
+                                            'pending_ppc': 0,  # But pending is 0 (fully unloaded)
+                                            'pending_premium': 0,
+                                            'pending_opc': 0,
+                                            'total_value': row[12] or 0,
+                                            'plant_depot': row[3],
+                                            'plant_description': row[13],
+                                            'sale_date': row[4]
+                                        })
+                                recent = pending_invoices[-1]
                             
                             billing_date = recent['sale_date']
                             dealer_code = recent['dealer_code']
