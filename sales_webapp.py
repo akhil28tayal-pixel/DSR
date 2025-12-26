@@ -3685,9 +3685,17 @@ def get_consolidated_vehicles():
                 # For Prev Day cards with multiple invoices from same date:
                 # Use total_ppc if we added invoices with pending=0 (to show complete billing for that date)
                 # Otherwise use card_pending_ppc (FIFO-calculated pending amount)
-                # Check if total_ppc > card_pending_ppc (indicates we added extra invoices)
+                # BUT: If card_pending_ppc = 0, always use 0 for remaining (FIFO determined no pending)
                 card_pending_ppc_val = truck_data.get('card_pending_ppc', 0)
-                if truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
+                card_pending_premium_val = truck_data.get('card_pending_premium', 0)
+                card_pending_opc_val = truck_data.get('card_pending_opc', 0)
+                
+                # If FIFO determined 0 pending, remaining is 0 regardless of total_ppc
+                if card_pending_ppc_val < 0.01 and card_pending_premium_val < 0.01 and card_pending_opc_val < 0.01:
+                    remaining_ppc = 0
+                    remaining_premium = 0
+                    remaining_opc = 0
+                elif truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
                     # We added extra invoices - use total_ppc for remaining
                     remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
                     remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
@@ -3695,8 +3703,8 @@ def get_consolidated_vehicles():
                 else:
                     # Normal FIFO pending - use card_pending_ppc
                     remaining_ppc = max(0, card_pending_ppc_val - card_unloaded_ppc)
-                    remaining_premium = max(0, truck_data.get('card_pending_premium', 0) - card_unloaded_premium)
-                    remaining_opc = max(0, truck_data.get('card_pending_opc', 0) - card_unloaded_opc)
+                    remaining_premium = max(0, card_pending_premium_val - card_unloaded_premium)
+                    remaining_opc = max(0, card_pending_opc_val - card_unloaded_opc)
             else:
                 # For today's cards, use simple calculation like dealer balance page:
                 # Remaining = Today's Billed - Today's Unloaded (no complex FIFO)
