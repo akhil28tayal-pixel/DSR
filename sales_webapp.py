@@ -3419,29 +3419,33 @@ def get_consolidated_vehicles():
                                                 cumulative_premium += premium_unloaded
                                                 cumulative_opc += opc_unloaded
                                 
-                                trucks_today[card_key] = {
-                                    'truck_number': truck_number,
-                                    'card_key': card_key,
-                                    'plant_depot': plant_depot,
-                                    'invoices': pending_invoices,
-                                    'dealer_codes': list(dealer_codes_set),
-                                    'total_ppc': total_ppc,
-                                    'total_premium': total_premium,
-                                    'total_opc': total_opc,
-                                    'total_quantity': total_qty,
-                                    'total_value': total_val,
-                                    'billing_date': billing_date,
-                                    'unloading_details': prev_day_unloading,  # Show today's unloading on prev day card (FIFO)
-                                    'other_billing': [],
-                                    'from_earlier_date': True,
-                                    'is_previous_day_pending': True,  # Show "Prev Day" tag
-                                    # Store card-specific pending for remaining calculation
-                                    'card_pending_ppc': card_pending_ppc,
-                                    'card_pending_premium': card_pending_premium,
-                                    'card_pending_opc': card_pending_opc
-                                }
-                        # Don't create cards for fully unloaded earlier billings
-                        # Only show cards with pending material
+                                # Only create card if there's pending OR unloading today
+                                # Don't create cards for fully unloaded earlier billings with no activity today
+                                has_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
+                                has_unloading = len(prev_day_unloading) > 0
+                                
+                                if has_pending or has_unloading:
+                                    trucks_today[card_key] = {
+                                        'truck_number': truck_number,
+                                        'card_key': card_key,
+                                        'plant_depot': plant_depot,
+                                        'invoices': pending_invoices,
+                                        'dealer_codes': list(dealer_codes_set),
+                                        'total_ppc': total_ppc,
+                                        'total_premium': total_premium,
+                                        'total_opc': total_opc,
+                                        'total_quantity': total_qty,
+                                        'total_value': total_val,
+                                        'billing_date': billing_date,
+                                        'unloading_details': prev_day_unloading,  # Show today's unloading on prev day card (FIFO)
+                                        'other_billing': [],
+                                        'from_earlier_date': True,
+                                        'is_previous_day_pending': True,  # Show "Prev Day" tag
+                                        # Store card-specific pending for remaining calculation
+                                        'card_pending_ppc': card_pending_ppc,
+                                        'card_pending_premium': card_pending_premium,
+                                        'card_pending_opc': card_pending_opc
+                                    }
         
         # Now that all cards (including _pending cards) are created, assign unloading
         assign_unloading_to_cards()
@@ -3672,12 +3676,21 @@ def get_consolidated_vehicles():
                 card_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
                 card_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
                 
-                # For Prev Day cards, use total_ppc (actual billed) instead of card_pending_ppc
-                # because card_pending_ppc only includes invoices with pending > 0 after FIFO,
-                # but we've added all invoices from that date to show complete billing
-                remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
-                remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
-                remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
+                # For Prev Day cards with multiple invoices from same date:
+                # Use total_ppc if we added invoices with pending=0 (to show complete billing for that date)
+                # Otherwise use card_pending_ppc (FIFO-calculated pending amount)
+                # Check if total_ppc > card_pending_ppc (indicates we added extra invoices)
+                card_pending_ppc_val = truck_data.get('card_pending_ppc', 0)
+                if truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
+                    # We added extra invoices - use total_ppc for remaining
+                    remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
+                    remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
+                    remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
+                else:
+                    # Normal FIFO pending - use card_pending_ppc
+                    remaining_ppc = max(0, card_pending_ppc_val - card_unloaded_ppc)
+                    remaining_premium = max(0, truck_data.get('card_pending_premium', 0) - card_unloaded_premium)
+                    remaining_opc = max(0, truck_data.get('card_pending_opc', 0) - card_unloaded_opc)
             else:
                 # For today's cards, use simple calculation like dealer balance page:
                 # Remaining = Today's Billed - Today's Unloaded (no complex FIFO)
