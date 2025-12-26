@@ -3339,15 +3339,16 @@ def get_consolidated_vehicles():
                                     # Check if there's any pending
                                     has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
                                     
-                                    # If no pending (fully unloaded), assign all unloading
+                                    # If no pending (fully unloaded) AND not billed today, assign all unloading
+                                    # If no pending but billed today, don't assign - let today's card get the unloading
                                     # Otherwise, only assign unloading for product types that have pending up to the pending amount
                                     for unload in all_today_unloading:
                                         ppc_unloaded = unload.get('ppc_unloaded', 0)
                                         premium_unloaded = unload.get('premium_unloaded', 0)
                                         opc_unloaded = unload.get('opc_unloaded', 0)
                                         
-                                        if not has_any_pending:
-                                            # No pending - assign all unloading (fully unloaded on this date)
+                                        if not has_any_pending and not is_billed_today:
+                                            # No pending and not billed today - assign all unloading (fully unloaded on this date)
                                             prev_day_unloading.append(unload)
                                         else:
                                             # Has pending - filter by product type and limit to pending amount
