@@ -3530,9 +3530,14 @@ def get_consolidated_vehicles():
             # For vehicles from earlier dates (not billed today), use card-specific pending as remaining
             if truck_data.get('from_earlier_date'):
                 # Use card-specific pending amounts (calculated during card creation)
-                remaining_ppc = truck_data.get('card_pending_ppc', total_pending_ppc)
-                remaining_premium = truck_data.get('card_pending_premium', total_pending_premium)
-                remaining_opc = truck_data.get('card_pending_opc', total_pending_opc)
+                # If this card has today's unloading (FIFO), subtract it from the pending
+                card_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                card_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                card_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                
+                remaining_ppc = max(0, truck_data.get('card_pending_ppc', total_pending_ppc) - card_unloaded_ppc)
+                remaining_premium = max(0, truck_data.get('card_pending_premium', total_pending_premium) - card_unloaded_premium)
+                remaining_opc = max(0, truck_data.get('card_pending_opc', total_pending_opc) - card_unloaded_opc)
             else:
                 remaining_ppc = min(truck_data['total_ppc'], total_pending_ppc)
                 remaining_premium = min(truck_data['total_premium'], total_pending_premium)
