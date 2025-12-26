@@ -3358,12 +3358,13 @@ def get_consolidated_vehicles():
                             if not merged_to_existing:
                                 card_key = f"{truck_number}_{plant_depot}_pending"
                                 
-                                # For vehicles with unloading today (but NOT billed today), assign today's unloading to this prev day card (FIFO)
-                                # If billed today, let today's card get the unloading (two separate cards)
+                                # For vehicles with unloading today, assign today's unloading to this prev day card (FIFO)
+                                # BUT: If card_pending = 0 AND billed today, don't assign (let today's card get it)
                                 # Only assign unloading that matches the product types in pending invoices
                                 # AND only up to the pending amount (or all if no pending - fully unloaded case)
                                 prev_day_unloading = []
-                                if not is_billed_today and has_unloading_today:
+                                has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
+                                if has_unloading_today and (has_any_pending or not is_billed_today):
                                     # Get today's unloading for this truck
                                     all_today_unloading = unloading_map.get(truck_number, [])
                                     
