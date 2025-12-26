@@ -3374,6 +3374,12 @@ def get_consolidated_vehicles():
                                     # Check if there's any pending
                                     has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
                                     
+                                    # If we added extra invoices (total_ppc > card_pending_ppc), use total_ppc as limit
+                                    # Otherwise use card_pending_ppc (FIFO pending)
+                                    limit_ppc = total_ppc if total_ppc > card_pending_ppc + 0.01 else card_pending_ppc
+                                    limit_premium = total_premium if total_premium > card_pending_premium + 0.01 else card_pending_premium
+                                    limit_opc = total_opc if total_opc > card_pending_opc + 0.01 else card_pending_opc
+                                    
                                     # If no pending (fully unloaded) AND not billed today, assign all unloading
                                     # If no pending but billed today, don't assign - let today's card get the unloading
                                     # Otherwise, only assign unloading for product types that have pending up to the pending amount
@@ -3386,32 +3392,32 @@ def get_consolidated_vehicles():
                                             # No pending and not billed today - assign all unloading (fully unloaded on this date)
                                             prev_day_unloading.append(unload)
                                         else:
-                                            # Has pending - filter by product type and limit to pending amount
+                                            # Has pending - filter by product type and limit to limit amount
                                             include_unloading = True
                                             
                                             # Check each product type
                                             if ppc_unloaded > 0:
-                                                if card_pending_ppc > 0.01 and cumulative_ppc < card_pending_ppc:
+                                                if limit_ppc > 0.01 and cumulative_ppc < limit_ppc:
                                                     pass
                                                 else:
                                                     include_unloading = False
                                             
                                             if premium_unloaded > 0:
-                                                if card_pending_premium > 0.01 and cumulative_premium < card_pending_premium:
+                                                if limit_premium > 0.01 and cumulative_premium < limit_premium:
                                                     pass
                                                 else:
                                                     include_unloading = False
                                             
                                             if opc_unloaded > 0:
-                                                if card_pending_opc > 0.01 and cumulative_opc < card_pending_opc:
+                                                if limit_opc > 0.01 and cumulative_opc < limit_opc:
                                                     pass
                                                 else:
                                                     include_unloading = False
                                             
-                                            # Also check that at least one product type has pending
-                                            has_any_match = (ppc_unloaded > 0 and card_pending_ppc > 0.01) or \
-                                                           (premium_unloaded > 0 and card_pending_premium > 0.01) or \
-                                                           (opc_unloaded > 0 and card_pending_opc > 0.01)
+                                            # Also check that at least one product type has limit
+                                            has_any_match = (ppc_unloaded > 0 and limit_ppc > 0.01) or \
+                                                           (premium_unloaded > 0 and limit_premium > 0.01) or \
+                                                           (opc_unloaded > 0 and limit_opc > 0.01)
                                             
                                             if include_unloading and has_any_match:
                                                 prev_day_unloading.append(unload)
