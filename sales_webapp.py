@@ -2995,8 +2995,8 @@ def get_consolidated_vehicles():
                 for dc in truck_data.get('dealer_codes', []):
                     truck_plant_dealer_codes[truck_number].add(str(dc))
         
-        # DEBUG: Log for HR55AZ1569 and HR58D1569
-        for debug_truck in ['HR55AZ1569', 'HR58D1569']:
+        # DEBUG: Log for HR55AZ1569, HR58D1569, and HR55AK1628
+        for debug_truck in ['HR55AZ1569', 'HR58D1569', 'HR55AK1628']:
             if debug_truck in [td['truck_number'] for td in trucks_today.values()]:
                 print(f"DEBUG {debug_truck}: truck_card_count={truck_card_count.get(debug_truck)}")
                 print(f"DEBUG {debug_truck}: truck_plant_dealer_codes={truck_plant_dealer_codes.get(debug_truck)}")
@@ -3541,11 +3541,12 @@ def get_consolidated_vehicles():
             
             if not today_has_unloading:
                 # All unloading went to previous billings, not today's
-                # BUT: Keep unloading_details if they were explicitly matched by plant_depot
-                # (This happens when there are multiple cards with different plant_depot values)
+                # BUT: Keep unloading_details if they exist (unloading was recorded on today's date)
+                # Only clear if there are truly no unloading_details
                 if truck_card_count.get(truck_number, 1) == 1:
-                    # Single card - clear if no unloading for today
-                    truck_data['unloading_details'] = []
+                    # Single card - only clear if there are no unloading_details at all
+                    if len(truck_data.get('unloading_details', [])) == 0:
+                        truck_data['unloading_details'] = []
                 # For multiple cards, keep the filtered unloading_details as they were matched by plant_depot
             elif truck_data.get('from_earlier_date'):
                 # For pending vehicles from earlier dates, show all today's unloading without filtering
