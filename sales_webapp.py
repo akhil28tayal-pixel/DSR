@@ -3236,15 +3236,17 @@ def get_consolidated_vehicles():
                                     'sale_date': row[4]
                                 })
                         
-                        # Include all invoices from the same date as the last pending invoice
-                        # This shows the complete billing for that date, not just the pending part
+                        # Include all invoices from the same date AND plant_depot as the last pending invoice
+                        # This shows the complete billing for that date/plant_depot, not just the pending part
                         if last_pending_date and pending_invoices:
+                            # Get the plant_depot of the pending invoices
+                            pending_plant_depots = set(inv['plant_depot'] for inv in pending_invoices)
                             for row in billing_rows:
-                                if row[4] == last_pending_date:
+                                if row[4] == last_pending_date and row[3] in pending_plant_depots:
                                     # Check if this invoice is already in pending_invoices
                                     invoice_num = row[0]
                                     if not any(inv['invoice_number'] == invoice_num for inv in pending_invoices):
-                                        # Add this invoice with 0 pending (fully consumed but same date)
+                                        # Add this invoice with 0 pending (fully consumed but same date/plant_depot)
                                         inv_ppc = row[5] or 0
                                         inv_premium = row[6] or 0
                                         inv_opc = row[7] or 0
