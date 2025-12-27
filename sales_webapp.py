@@ -599,8 +599,9 @@ def get_opening_balances_with_auto_calculation(month_year):
             has_manual_balances = True
         
         # Get all dealers who have transactions in this month OR previous month
+        # Group by dealer_code only to avoid duplicates from name variations
         cursor.execute('''
-            SELECT DISTINCT dealer_code, dealer_name FROM (
+            SELECT dealer_code, MAX(dealer_name) as dealer_name FROM (
                 SELECT dealer_code, dealer_name FROM sales_data WHERE strftime('%Y-%m', sale_date) = ?
                 UNION
                 SELECT dealer_code, dealer_name FROM collections_data WHERE strftime('%Y-%m', posting_date) = ?
@@ -611,6 +612,7 @@ def get_opening_balances_with_auto_calculation(month_year):
                 UNION
                 SELECT dealer_code, dealer_name FROM opening_balances WHERE month_year = ?
             )
+            GROUP BY dealer_code
         ''', (month_year, month_year, prev_month_year, prev_month_year, prev_month_year))
         
         all_dealers = cursor.fetchall()
@@ -620,82 +622,79 @@ def get_opening_balances_with_auto_calculation(month_year):
         
         # If no manual balances for current month, calculate previous month's closing for all dealers
         if not has_manual_balances:
-            # Get previous month's opening balances
+            # Get previous month's opening balances (use dealer_code only)
             cursor.execute('''
-                SELECT dealer_code, dealer_name, opening_balance 
+                SELECT dealer_code, MAX(opening_balance) as opening_balance 
                 FROM opening_balances 
                 WHERE month_year = ?
+                GROUP BY dealer_code
             ''', (prev_month_year,))
             
             prev_opening = {}
             for row in cursor.fetchall():
-                key = f"{row[0]}_{row[1]}"
-                prev_opening[key] = row[2] or 0
+                prev_opening[str(row[0])] = row[1] or 0
             
-            # Get previous month's sales
+            # Get previous month's sales (group by dealer_code only)
             cursor.execute('''
-                SELECT dealer_code, dealer_name, SUM(total_purchase_value) as total_sales
+                SELECT dealer_code, SUM(total_purchase_value) as total_sales
                 FROM sales_data 
                 WHERE strftime('%Y-%m', sale_date) = ?
-                GROUP BY dealer_code, dealer_name
+                GROUP BY dealer_code
             ''', (prev_month_year,))
             
             prev_sales = {}
             for row in cursor.fetchall():
-                key = f"{row[0]}_{row[1]}"
-                prev_sales[key] = row[2] or 0
+                prev_sales[str(row[0])] = row[1] or 0
             
-            # Get previous month's collections
+            # Get previous month's collections (group by dealer_code only)
             cursor.execute('''
-                SELECT dealer_code, dealer_name, SUM(amount) as total_collections
+                SELECT dealer_code, SUM(amount) as total_collections
                 FROM collections_data 
                 WHERE strftime('%Y-%m', posting_date) = ?
-                GROUP BY dealer_code, dealer_name
+                GROUP BY dealer_code
             ''', (prev_month_year,))
             
             prev_collections = {}
             for row in cursor.fetchall():
-                key = f"{row[0]}_{row[1]}"
-                prev_collections[key] = row[2] or 0
+                prev_collections[str(row[0])] = row[1] or 0
             
-            # Get previous month's credit notes (reduces balance)
+            # Get previous month's credit notes (reduces balance, group by dealer_code only)
             prev_credits = {}
             try:
                 cursor.execute('''
-                    SELECT dealer_code, dealer_name, SUM(credit_discount) as total_credit
+                    SELECT dealer_code, SUM(credit_discount) as total_credit
                     FROM credit_discounts 
                     WHERE month_year = ?
-                    GROUP BY dealer_code, dealer_name
+                    GROUP BY dealer_code
                 ''', (prev_month_year,))
                 for row in cursor.fetchall():
-                    key = f"{row[0]}_{row[1]}"
-                    prev_credits[key] = row[2] or 0
+                    prev_credits[str(row[0])] = row[1] or 0
             except:
                 pass
             
-            # Get previous month's debit notes (increases balance)
+            # Get previous month's debit notes (increases balance, group by dealer_code only)
             prev_debits = {}
             try:
                 cursor.execute('''
-                    SELECT dealer_code, dealer_name, SUM(debit_amount) as total_debit
+                    SELECT dealer_code, SUM(debit_amount) as total_debit
                     FROM debit_notes 
                     WHERE month_year = ?
-                    GROUP BY dealer_code, dealer_name
+                    GROUP BY dealer_code
                 ''', (prev_month_year,))
                 for row in cursor.fetchall():
-                    key = f"{row[0]}_{row[1]}"
-                    prev_debits[key] = row[2] or 0
+                    prev_debits[str(row[0])] = row[1] or 0
             except:
                 pass
             
             # Calculate previous month closing = opening + sales - collections - credits + debits
             for dealer_code, dealer_name in all_dealers:
                 key = f"{dealer_code}_{dealer_name}"
-                opening = prev_opening.get(key, 0)
-                sales = prev_sales.get(key, 0)
-                collections = prev_collections.get(key, 0)
-                credits = prev_credits.get(key, 0)
-                debits = prev_debits.get(key, 0)
+                dealer_code_str = str(dealer_code)
+                opening = prev_opening.get(dealer_code_str, 0)
+                sales = prev_sales.get(dealer_code_str, 0)
+                collections = prev_collections.get(dealer_code_str, 0)
+                credits = prev_credits.get(dealer_code_str, 0)
+                debits = prev_debits.get(dealer_code_str, 0)
                 closing = opening + sales - collections - credits + debits
                 result_balances[key] = round(closing, 2)
         else:
@@ -741,12 +740,20 @@ def get_report():
         # Extract month-year for opening balances
         month_year = selected_date[:7]  # YYYY-MM format
         
-        # Get sales data for the selected date
+        # Get sales data for the selected date, grouped by dealer_code
         cursor.execute('''
-            SELECT dealer_code, dealer_name, ppc_quantity, premium_quantity, opc_quantity, 
-                   total_quantity, ppc_purchase_value, premium_purchase_value, opc_purchase_value, total_purchase_value
+            SELECT dealer_code, MAX(dealer_name) as dealer_name, 
+                   SUM(ppc_quantity) as ppc_quantity, 
+                   SUM(premium_quantity) as premium_quantity, 
+                   SUM(opc_quantity) as opc_quantity, 
+                   SUM(total_quantity) as total_quantity, 
+                   SUM(ppc_purchase_value) as ppc_purchase_value, 
+                   SUM(premium_purchase_value) as premium_purchase_value, 
+                   SUM(opc_purchase_value) as opc_purchase_value, 
+                   SUM(total_purchase_value) as total_purchase_value
             FROM sales_data 
             WHERE sale_date = ?
+            GROUP BY dealer_code
             ORDER BY dealer_name
         ''', (selected_date,))
         
@@ -770,11 +777,12 @@ def get_report():
             sales.append(sale_data)
             total_sales += sale_data['total_purchase_value']
         
-        # Get collections data for the selected date
+        # Get collections data for the selected date, grouped by dealer_code
         cursor.execute('''
-            SELECT dealer_code, dealer_name, amount
+            SELECT dealer_code, MAX(dealer_name) as dealer_name, SUM(amount) as amount
             FROM collections_data 
             WHERE posting_date = ?
+            GROUP BY dealer_code
             ORDER BY dealer_name
         ''', (selected_date,))
         
@@ -853,25 +861,43 @@ def get_report():
         opening_balances = []
         
         # Get all unique dealers from current month AND previous month
-        # Use string dealer_code to avoid duplicates from int vs string
-        all_dealers = set()
+        # Use dealer_code as primary key to avoid duplicates from name variations
+        dealers_dict = {}
         for sale in sales + cumulative_sales:
-            all_dealers.add((str(sale['dealer_code']), sale['dealer_name']))
+            dealer_code = str(sale['dealer_code'])
+            if dealer_code not in dealers_dict:
+                dealers_dict[dealer_code] = sale['dealer_name']
         for collection in collections + cumulative_collections:
-            all_dealers.add((str(collection['dealer_code']), collection['dealer_name']))
+            dealer_code = str(collection['dealer_code'])
+            if dealer_code not in dealers_dict:
+                dealers_dict[dealer_code] = collection['dealer_name']
         
         # Also include dealers from opening_balances_map (includes previous month dealers)
         for key in opening_balances_map.keys():
             parts = key.split('_', 1)
             if len(parts) == 2:
-                all_dealers.add((str(parts[0]), parts[1]))
+                dealer_code = str(parts[0])
+                if dealer_code not in dealers_dict:
+                    dealers_dict[dealer_code] = parts[1]
         
-        for dealer_code, dealer_name in all_dealers:
-            key = f"{dealer_code}_{dealer_name}"
+        # For each dealer_code, try all possible name variants to find opening balance
+        for dealer_code, primary_name in dealers_dict.items():
+            # Try to find opening balance with any name variant for this dealer_code
+            opening_balance = 0
+            found = False
+            for key in opening_balances_map.keys():
+                if key.startswith(f"{dealer_code}_"):
+                    opening_balance = opening_balances_map[key]
+                    found = True
+                    break
+            
+            if not found:
+                opening_balance = opening_balances_map.get(f"{dealer_code}_{primary_name}", 0)
+            
             opening_balances.append({
-                'dealer_code': str(dealer_code),
-                'dealer_name': dealer_name,
-                'opening_balance': round(opening_balances_map.get(key, 0), 2)
+                'dealer_code': dealer_code,
+                'dealer_name': primary_name,
+                'opening_balance': round(opening_balance, 2)
             })
         
         # Get credit notes for the month (cumulative)
