@@ -3033,6 +3033,27 @@ def get_consolidated_vehicles():
         for card_key, truck_data in trucks_today.items():
             truck_data['unloading_details'] = []
         
+        # Helper function to transform unloading record field names for frontend
+        def transform_unloading_record(unload):
+            """Transform unloading_dealer and unloading_point to dealer_name and point"""
+            return {
+                'id': unload.get('id'),
+                'truck_number': unload.get('truck_number'),
+                'dealer_code': unload.get('dealer_code'),
+                'dealer_name': unload.get('unloading_dealer'),
+                'point': unload.get('unloading_point'),
+                'unloading_dealer': unload.get('unloading_dealer'),  # Keep original for compatibility
+                'unloading_point': unload.get('unloading_point'),    # Keep original for compatibility
+                'ppc_unloaded': unload.get('ppc_unloaded', 0),
+                'premium_unloaded': unload.get('premium_unloaded', 0),
+                'opc_unloaded': unload.get('opc_unloaded', 0),
+                'unloaded_quantity': unload.get('unloaded_quantity', 0),
+                'unloading_date': unload.get('unloading_date'),
+                'plant_depot': unload.get('plant_depot'),
+                'notes': unload.get('notes', ''),
+                'is_other_dealer': unload.get('is_other_dealer', False)
+            }
+        
         # Process unloading assignment in a separate loop after all cards are created
         def assign_unloading_to_cards():
             for card_key, truck_data in trucks_today.items():
@@ -3066,14 +3087,14 @@ def get_consolidated_vehicles():
                     for unload in all_unloading:
                         # Check if this unloading was already assigned to pending card by ID
                         if unload.get('id') not in pending_card_unloading_ids:
-                            today_card_unloading.append(unload)
+                            today_card_unloading.append(transform_unloading_record(unload))
                     
                     truck_data['unloading_details'] = today_card_unloading
                 # If this truck has only one card, show ALL unloading for the truck
                 # If this truck has multiple cards (PLANT + DEPOT), filter by plant_depot first, then dealer_code
                 elif truck_card_count.get(truck_number, 1) == 1:
                     # Single card - show all unloading
-                    truck_data['unloading_details'] = all_unloading
+                    truck_data['unloading_details'] = [transform_unloading_record(u) for u in all_unloading]
                 else:
                     # Multiple cards - filter by plant_depot and dealer_code
                     filtered_unloading = []
@@ -3088,7 +3109,7 @@ def get_consolidated_vehicles():
                         # First priority: Match by plant_depot if unloading has it specified
                         if u_plant_depot:
                             if u_plant_depot == plant_depot:
-                                filtered_unloading.append(u)
+                                filtered_unloading.append(transform_unloading_record(u))
                         else:
                             # Legacy unloading without plant_depot - use dealer_code matching
                             if plant_depot == 'DEPOT':
@@ -3097,11 +3118,11 @@ def get_consolidated_vehicles():
                                 # 2. Doesn't match any PLANT card's dealer_codes (unassigned unloading goes to DEPOT)
                                 # 3. Has no dealer_code (legacy data)
                                 if u_dealer_code in dealer_codes_str or u_dealer_code not in plant_codes or not u_dealer_code:
-                                    filtered_unloading.append(u)
+                                    filtered_unloading.append(transform_unloading_record(u))
                             else:
                                 # PLANT card - only gets unloading matching its dealer_codes
                                 if u_dealer_code in dealer_codes_str or not u_dealer_code:
-                                    filtered_unloading.append(u)
+                                    filtered_unloading.append(transform_unloading_record(u))
                     truck_data['unloading_details'] = filtered_unloading
                     
                     if truck_number in ['HR55AZ1569', 'HR58D1569']:
@@ -3468,10 +3489,12 @@ def get_consolidated_vehicles():
         # Add other_billing quantities to truck totals
         # ONLY for cards that were created from sales_data (not from other_billing_map)
         # Cards from other_billing_map already have these quantities included (flagged with other_billing_added)
-        for truck_number, truck_data in trucks_today.items():
+        for card_key, truck_data in trucks_today.items():
             # Skip if other_billing quantities were already added to this card
             if truck_data.get('other_billing_added'):
                 continue
+            
+            truck_number = truck_data['truck_number']
             other_billings = truck_data.get('other_billing', [])
             for ob in other_billings:
                 truck_data['total_ppc'] += ob.get('ppc_quantity', 0) or 0
@@ -3813,8 +3836,10 @@ def get_consolidated_vehicles():
                         filtered_unloading.append({
                             'id': u['id'],
                             'truck_number': u['truck_number'],
-                            'unloading_dealer': u['unloading_dealer'],
-                            'unloading_point': u['unloading_point'],
+                            'unloading_dealer': u.get('unloading_dealer'),
+                            'unloading_point': u.get('unloading_point'),
+                            'dealer_name': u.get('dealer_name') or u.get('unloading_dealer'),  # Frontend field
+                            'point': u.get('point') or u.get('unloading_point'),              # Frontend field
                             'ppc_unloaded': round(show_ppc, 2),
                             'premium_unloaded': round(show_premium, 2),
                             'opc_unloaded': round(show_opc, 2),
@@ -4477,6 +4502,8 @@ def get_consolidated_vehicles():
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/save_other_dealer_billing', methods=['POST'])
