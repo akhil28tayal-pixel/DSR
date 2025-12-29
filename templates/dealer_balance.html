@@ -1113,13 +1113,14 @@
             const opcVehicleTotal = opcVehicles.reduce((s, v) => s + v.pending, 0);
             
             // Update badges (convert MT to bags: 1 MT = 20 bags)
-            document.getElementById('ppcTotalBadge').textContent = `${Math.round(ppcTotal * 20)} Bags`;
-            document.getElementById('premiumTotalBadge').textContent = `${Math.round(premiumTotal * 20)} Bags`;
-            document.getElementById('opcTotalBadge').textContent = `${Math.round(opcTotal * 20)} Bags`;
+            // Round MT to 2 decimals first to fix floating-point errors, then convert to bags
+            document.getElementById('ppcTotalBadge').textContent = `${Math.round(Math.round(ppcTotal * 100) / 100 * 20)} Bags`;
+            document.getElementById('premiumTotalBadge').textContent = `${Math.round(Math.round(premiumTotal * 100) / 100 * 20)} Bags`;
+            document.getElementById('opcTotalBadge').textContent = `${Math.round(Math.round(opcTotal * 100) / 100 * 20)} Bags`;
             
-            document.getElementById('ppcVehicleBadge').textContent = `${Math.round(ppcVehicleTotal * 20)} Bags`;
-            document.getElementById('premiumVehicleBadge').textContent = `${Math.round(premiumVehicleTotal * 20)} Bags`;
-            document.getElementById('opcVehicleBadge').textContent = `${Math.round(opcVehicleTotal * 20)} Bags`;
+            document.getElementById('ppcVehicleBadge').textContent = `${Math.round(Math.round(ppcVehicleTotal * 100) / 100 * 20)} Bags`;
+            document.getElementById('premiumVehicleBadge').textContent = `${Math.round(Math.round(premiumVehicleTotal * 100) / 100 * 20)} Bags`;
+            document.getElementById('opcVehicleBadge').textContent = `${Math.round(Math.round(opcVehicleTotal * 100) / 100 * 20)} Bags`;
             
             // Render dealer lists
             document.getElementById('ppcDealerList').innerHTML = renderDealerList(sortedPPC);
@@ -1150,7 +1151,8 @@
                 const isNegative = d.balance < 0;
                 const valueClass = isNegative ? 'negative' : (Math.abs(d.balance) < 0.01 ? 'zero' : 'positive');
                 const itemClass = isNegative ? 'negative' : '';
-                const bags = Math.round(d.balance * 20);
+                // Round MT to 2 decimals first to fix floating-point errors, then convert to bags
+                const bags = Math.round(Math.round(d.balance * 100) / 100 * 20);
                 
                 return `
                     <div class="balance-item ${itemClass}">
@@ -1180,7 +1182,7 @@
                         <span class="vehicle-number">${v.truck}</span>
                         <small class="text-muted ms-2">${v.date}</small>
                     </div>
-                    <span class="pending-qty">${Math.round(v.pending * 20)} Bags</span>
+                    <span class="pending-qty">${Math.round(Math.round(v.pending * 100) / 100 * 20)} Bags</span>
                 </div>
             `).join('');
         }
