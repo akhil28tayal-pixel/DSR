@@ -3718,20 +3718,38 @@ def get_consolidated_vehicles():
                 card_pending_premium_val = truck_data.get('card_pending_premium', 0)
                 card_pending_opc_val = truck_data.get('card_pending_opc', 0)
                 
-                # If FIFO determined 0 pending, remaining is 0 regardless of total_ppc
-                if card_pending_ppc_val < 0.01 and card_pending_premium_val < 0.01 and card_pending_opc_val < 0.01:
+                # Calculate remaining for each product type separately based on its pending status
+                # PPC
+                if card_pending_ppc_val < 0.01:
+                    # FIFO determined 0 pending for PPC
                     remaining_ppc = 0
-                    remaining_premium = 0
-                    remaining_opc = 0
                 elif truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
                     # We added extra invoices - use total_ppc for remaining
                     remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
-                    remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
-                    remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
                 else:
                     # Normal FIFO pending - use card_pending_ppc
                     remaining_ppc = max(0, card_pending_ppc_val - card_unloaded_ppc)
+                
+                # Premium
+                if card_pending_premium_val < 0.01:
+                    # FIFO determined 0 pending for Premium
+                    remaining_premium = 0
+                elif truck_data.get('total_premium', 0) > card_pending_premium_val + 0.01:
+                    # We added extra invoices - use total_premium for remaining
+                    remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
+                else:
+                    # Normal FIFO pending - use card_pending_premium
                     remaining_premium = max(0, card_pending_premium_val - card_unloaded_premium)
+                
+                # OPC
+                if card_pending_opc_val < 0.01:
+                    # FIFO determined 0 pending for OPC
+                    remaining_opc = 0
+                elif truck_data.get('total_opc', 0) > card_pending_opc_val + 0.01:
+                    # We added extra invoices - use total_opc for remaining
+                    remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
+                else:
+                    # Normal FIFO pending - use card_pending_opc
                     remaining_opc = max(0, card_pending_opc_val - card_unloaded_opc)
             else:
                 # For today's cards, use simple calculation like dealer balance page:
