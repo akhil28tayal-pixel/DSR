@@ -3179,16 +3179,13 @@ def get_consolidated_vehicles():
             month_other_billed = cursor.fetchone()
             
             # Get current month's unloading
-            # For vehicles billed today, exclude today's unloading to properly calculate earlier pending
-            # This prevents today's unloading from being consumed by earlier billings via FIFO
-            unloading_end_date = selected_date if not is_billed_today else selected_date
-            unloading_end_op = '<=' if not is_billed_today else '<'
-            
-            cursor.execute(f'''
+            # Always exclude today's unloading from FIFO calculation to prevent it from being
+            # consumed by earlier billings. Today's unloading will be subtracted in remaining calculation.
+            cursor.execute('''
                 SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
                        COALESCE(SUM(opc_unloaded), 0)
                 FROM vehicle_unloading
-                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date {unloading_end_op} ?
+                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
             ''', (truck_number, month_start, selected_date))
             month_unloaded = cursor.fetchone()
             
