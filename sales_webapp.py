@@ -3418,16 +3418,29 @@ def get_consolidated_vehicles():
                                 # But calculate cumulative unloading for remaining calculation
                                 prev_day_unloading = []
                                 
-                                # Query 1: Get cumulative unloading from billing_date to selected_date for remaining calculation
+                                # Calculate cumulative unloading for this card:
+                                # Start with what was already consumed up to billing_date (via FIFO)
+                                # Then add unloading from billing_date to selected_date that applies to this card
+                                already_consumed_ppc = total_ppc - card_pending_ppc
+                                already_consumed_premium = total_premium - card_pending_premium
+                                already_consumed_opc = total_opc - card_pending_opc
+                                
+                                # Get unloading from billing_date to selected_date
                                 cursor.execute('''
                                     SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
                                     FROM vehicle_unloading
                                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                                 ''', (truck_number, billing_date, selected_date))
-                                cumulative_unloading = cursor.fetchone()
-                                cumulative_ppc = cumulative_unloading[0] or 0
-                                cumulative_premium = cumulative_unloading[1] or 0
-                                cumulative_opc = cumulative_unloading[2] or 0
+                                period_unloading = cursor.fetchone()
+                                period_ppc = period_unloading[0] or 0
+                                period_premium = period_unloading[1] or 0
+                                period_opc = period_unloading[2] or 0
+                                
+                                # Cumulative = already consumed + min(period unloading, card_pending)
+                                # The min ensures we don't count more than what's pending for this card
+                                cumulative_ppc = already_consumed_ppc + min(period_ppc, card_pending_ppc)
+                                cumulative_premium = already_consumed_premium + min(period_premium, card_pending_premium)
+                                cumulative_opc = already_consumed_opc + min(period_opc, card_pending_opc)
                                 
                                 # Query 2: Get unloading ONLY on the selected_date for display
                                 cursor.execute('''
@@ -3746,6 +3759,8 @@ def get_consolidated_vehicles():
                 card_pending_opc_val = truck_data.get('card_pending_opc', 0)
                 
                 # Calculate remaining for each product type separately based on its pending status
+                # card_pending_ppc already accounts for all unloading up to selected_date via FIFO
+                # So we use it directly without subtracting cumulative_unloaded again
                 # PPC
                 if card_pending_ppc_val < 0.01:
                     # FIFO determined 0 pending for PPC
@@ -3754,8 +3769,8 @@ def get_consolidated_vehicles():
                     # We added extra invoices - use total_ppc for remaining
                     remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
                 else:
-                    # Normal FIFO pending - use card_pending_ppc
-                    remaining_ppc = max(0, card_pending_ppc_val - card_unloaded_ppc)
+                    # Normal FIFO pending - card_pending_ppc is already the remaining
+                    remaining_ppc = card_pending_ppc_val
                 
                 # Premium
                 if card_pending_premium_val < 0.01:
@@ -3765,8 +3780,8 @@ def get_consolidated_vehicles():
                     # We added extra invoices - use total_premium for remaining
                     remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
                 else:
-                    # Normal FIFO pending - use card_pending_premium
-                    remaining_premium = max(0, card_pending_premium_val - card_unloaded_premium)
+                    # Normal FIFO pending - card_pending_premium is already the remaining
+                    remaining_premium = card_pending_premium_val
                 
                 # OPC
                 if card_pending_opc_val < 0.01:
@@ -3776,8 +3791,8 @@ def get_consolidated_vehicles():
                     # We added extra invoices - use total_opc for remaining
                     remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
                 else:
-                    # Normal FIFO pending - use card_pending_opc
-                    remaining_opc = max(0, card_pending_opc_val - card_unloaded_opc)
+                    # Normal FIFO pending - card_pending_opc is already the remaining
+                    remaining_opc = card_pending_opc_val
             else:
                 # For today's cards, use simple calculation like dealer balance page:
                 # Remaining = Today's Billed - Today's Unloaded (no complex FIFO)
