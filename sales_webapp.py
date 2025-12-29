@@ -3430,7 +3430,8 @@ def get_consolidated_vehicles():
                                 historical_unloading = cursor.fetchall()
                                 
                                 if historical_unloading and (has_any_pending or not is_billed_today):
-                                    # Process all historical unloading records (FIFO: assign all unloading to pending)
+                                    # Process historical unloading records
+                                    # Only include unloading that matches the pending product types
                                     for unload_row in historical_unloading:
                                         unload_id = unload_row[0]
                                         dealer_code = unload_row[1]
@@ -3441,19 +3442,27 @@ def get_consolidated_vehicles():
                                         opc_unloaded = unload_row[6] or 0
                                         unload_date = unload_row[7]
                                         
-                                        unload = {
-                                            'id': unload_id,
-                                            'dealer_code': dealer_code,
-                                            'dealer_name': unloading_dealer,
-                                            'point': unloading_point,
-                                            'ppc_unloaded': ppc_unloaded,
-                                            'premium_unloaded': premium_unloaded,
-                                            'opc_unloaded': opc_unloaded,
-                                            'unloading_date': unload_date
-                                        }
+                                        # Only include unloading if it matches a product type that has pending
+                                        has_matching_product = False
+                                        if card_pending_ppc > 0.01 and ppc_unloaded > 0:
+                                            has_matching_product = True
+                                        if card_pending_premium > 0.01 and premium_unloaded > 0:
+                                            has_matching_product = True
+                                        if card_pending_opc > 0.01 and opc_unloaded > 0:
+                                            has_matching_product = True
                                         
-                                        # Add all unloading to Prev Day card (FIFO logic)
-                                        prev_day_unloading.append(unload)
+                                        if has_matching_product:
+                                            unload = {
+                                                'id': unload_id,
+                                                'dealer_code': dealer_code,
+                                                'dealer_name': unloading_dealer,
+                                                'point': unloading_point,
+                                                'ppc_unloaded': ppc_unloaded,
+                                                'premium_unloaded': premium_unloaded,
+                                                'opc_unloaded': opc_unloaded,
+                                                'unloading_date': unload_date
+                                            }
+                                            prev_day_unloading.append(unload)
                                 
                                 # Create card if there's pending OR if there's unloading assigned
                                 # This shows vehicles that have pending material (even if fully unloaded today)
