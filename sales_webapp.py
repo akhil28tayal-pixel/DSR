@@ -3411,21 +3411,18 @@ def get_consolidated_vehicles():
                                 
                                 card_key = f"{truck_number}_{plant_depot}_pending"
                                 
-                                # For Prev Day cards, get unloading from billing date up to and including selected date
-                                # FIFO: Today's unloading should be assigned to Prev Day pending first
+                                # For Prev Day cards, only show unloading from the selected date (current day)
+                                # The remaining calculation uses cumulative unloading, but display only shows today's
                                 prev_day_unloading = []
                                 
-                                # Query for unloading between billing_date and selected_date (inclusive)
-                                # Include today's unloading for FIFO allocation to pending
-                                unloading_end_date = selected_date
-                                unloading_end_op = '<='
-                                
-                                cursor.execute(f'''
+                                # Query for unloading ONLY on the selected_date (not historical)
+                                # This shows only today's unloading activity in the unloading details
+                                cursor.execute('''
                                     SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
                                     FROM vehicle_unloading
-                                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date {unloading_end_op} ?
+                                    WHERE truck_number = ? AND unloading_date = ?
                                     ORDER BY unloading_date ASC
-                                ''', (truck_number, billing_date, unloading_end_date))
+                                ''', (truck_number, selected_date))
                                 
                                 historical_unloading = cursor.fetchall()
                                 
