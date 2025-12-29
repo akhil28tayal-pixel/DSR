@@ -3395,7 +3395,7 @@ def get_consolidated_vehicles():
                                 unloading_end_op = '<' if is_billed_today else '<='
                                 
                                 cursor.execute(f'''
-                                    SELECT dealer_code, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
+                                    SELECT dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
                                     FROM vehicle_unloading
                                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date {unloading_end_op} ?
                                     ORDER BY unloading_date ASC
@@ -3418,13 +3418,17 @@ def get_consolidated_vehicles():
                                     # Process historical unloading records
                                     for unload_row in historical_unloading:
                                         dealer_code = unload_row[0]
-                                        ppc_unloaded = unload_row[1] or 0
-                                        premium_unloaded = unload_row[2] or 0
-                                        opc_unloaded = unload_row[3] or 0
-                                        unload_date = unload_row[4]
+                                        unloading_dealer = unload_row[1]
+                                        unloading_point = unload_row[2]
+                                        ppc_unloaded = unload_row[3] or 0
+                                        premium_unloaded = unload_row[4] or 0
+                                        opc_unloaded = unload_row[5] or 0
+                                        unload_date = unload_row[6]
                                         
                                         unload = {
                                             'dealer_code': dealer_code,
+                                            'dealer_name': unloading_dealer,
+                                            'point': unloading_point,
                                             'ppc_unloaded': ppc_unloaded,
                                             'premium_unloaded': premium_unloaded,
                                             'opc_unloaded': opc_unloaded,
