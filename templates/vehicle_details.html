@@ -1018,12 +1018,12 @@
                                                 <tbody>
                                                     ${vehicle.unloading_details.map(u => `
                                                         <tr class="${u.is_other_dealer ? 'table-warning' : ''}">
-                                                            <td>${u.unloading_dealer}${u.is_other_dealer ? ' <small>(Other)</small>' : ''}</td>
-                                                            <td>${u.unloading_point}</td>
+                                                            <td>${u.dealer_name || u.unloading_dealer || 'N/A'}${u.is_other_dealer ? ' <small>(Other)</small>' : ''}</td>
+                                                            <td>${u.point || u.unloading_point || 'N/A'}</td>
                                                             <td class="text-end">${((u.ppc_unloaded || 0) + (u.premium_unloaded || 0) + (u.opc_unloaded || 0)).toFixed(2)} MT</td>
                                                             <td class="text-center">
                                                                 <button class="btn btn-sm btn-outline-danger py-0 px-1" 
-                                                                    onclick="deleteUnloading(${u.id}, '${u.unloading_dealer}', ${(u.ppc_unloaded || 0) + (u.premium_unloaded || 0) + (u.opc_unloaded || 0)})"
+                                                                    onclick="deleteUnloading(${u.id}, '${u.dealer_name || u.unloading_dealer || 'N/A'}', ${(u.ppc_unloaded || 0) + (u.premium_unloaded || 0) + (u.opc_unloaded || 0)})"
                                                                     title="Delete unloading">
                                                                     <i class="bi bi-trash"></i>
                                                                 </button>
