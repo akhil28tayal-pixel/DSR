@@ -3412,11 +3412,21 @@ def get_consolidated_vehicles():
                                 card_key = f"{truck_number}_{plant_depot}_pending"
                                 
                                 # For Prev Day cards, only show unloading from the selected date (current day)
-                                # The remaining calculation uses cumulative unloading, but display only shows today's
+                                # But calculate cumulative unloading for remaining calculation
                                 prev_day_unloading = []
                                 
-                                # Query for unloading ONLY on the selected_date (not historical)
-                                # This shows only today's unloading activity in the unloading details
+                                # Query 1: Get cumulative unloading from billing_date to selected_date for remaining calculation
+                                cursor.execute('''
+                                    SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
+                                    FROM vehicle_unloading
+                                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                                ''', (truck_number, billing_date, selected_date))
+                                cumulative_unloading = cursor.fetchone()
+                                cumulative_ppc = cumulative_unloading[0] or 0
+                                cumulative_premium = cumulative_unloading[1] or 0
+                                cumulative_opc = cumulative_unloading[2] or 0
+                                
+                                # Query 2: Get unloading ONLY on the selected_date for display
                                 cursor.execute('''
                                     SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
                                     FROM vehicle_unloading
@@ -3485,6 +3495,10 @@ def get_consolidated_vehicles():
                                         'is_previous_day_pending': True,  # Show "Prev Day" tag
                                         # Store card-specific pending for remaining calculation
                                         'card_pending_ppc': card_pending_ppc,
+                                        # Store cumulative unloading for remaining calculation
+                                        'cumulative_unloaded_ppc': cumulative_ppc,
+                                        'cumulative_unloaded_premium': cumulative_premium,
+                                        'cumulative_unloaded_opc': cumulative_opc,
                                         'card_pending_premium': card_pending_premium,
                                         'card_pending_opc': card_pending_opc
                                     }
@@ -3714,11 +3728,11 @@ def get_consolidated_vehicles():
             # This ensures that if total pending > today's billed, the excess shows on previous billings
             # For vehicles from earlier dates (not billed today), use card-specific pending as remaining
             if truck_data.get('from_earlier_date'):
-                # Use card-specific pending amounts (calculated during card creation)
-                # If this card has today's unloading (FIFO), subtract it from the pending
-                card_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                card_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                card_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                # Use cumulative unloading (from billing_date to selected_date) for remaining calculation
+                # The unloading_details only shows today's unloading for display
+                card_unloaded_ppc = truck_data.get('cumulative_unloaded_ppc', 0)
+                card_unloaded_premium = truck_data.get('cumulative_unloaded_premium', 0)
+                card_unloaded_opc = truck_data.get('cumulative_unloaded_opc', 0)
                 
                 # For Prev Day cards with multiple invoices from same date:
                 # Use total_ppc if we added invoices with pending=0 (to show complete billing for that date)
