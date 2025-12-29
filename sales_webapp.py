@@ -3382,12 +3382,17 @@ def get_consolidated_vehicles():
                             
                             # Skip creating new card if merged to existing
                             if not merged_to_existing:
+                                # Don't create Prev Day card if no actual pending
+                                # This prevents showing fully unloaded cards from previous days
+                                has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
+                                if not has_any_pending:
+                                    continue  # Skip this card - no pending material
+                                
                                 card_key = f"{truck_number}_{plant_depot}_pending"
                                 
                                 # For Prev Day cards, get unloading from billing date up to (but not including) selected date
                                 # This includes historical unloading that was already consumed in FIFO calculation
                                 prev_day_unloading = []
-                                has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
                                 
                                 # Query for unloading between billing_date and selected_date (exclusive)
                                 # For vehicles billed today, exclude today's unloading (let today's card get it)
@@ -3475,12 +3480,19 @@ def get_consolidated_vehicles():
                                                 cumulative_premium += premium_unloaded
                                                 cumulative_opc += opc_unloaded
                                 
-                                # Only create card if there's pending OR unloading today
-                                # Don't create cards for fully unloaded earlier billings with no activity today
-                                has_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
-                                has_unloading = len(prev_day_unloading) > 0
+                                # Calculate remaining after historical unloading
+                                card_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in prev_day_unloading)
+                                card_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in prev_day_unloading)
+                                card_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in prev_day_unloading)
                                 
-                                if has_pending or has_unloading:
+                                remaining_ppc = max(0, card_pending_ppc - card_unloaded_ppc)
+                                remaining_premium = max(0, card_pending_premium - card_unloaded_premium)
+                                remaining_opc = max(0, card_pending_opc - card_unloaded_opc)
+                                
+                                # Only create card if there's remaining material after unloading
+                                has_remaining = remaining_ppc > 0.01 or remaining_premium > 0.01 or remaining_opc > 0.01
+                                
+                                if has_remaining:
                                     trucks_today[card_key] = {
                                         'truck_number': truck_number,
                                         'card_key': card_key,
