@@ -3390,17 +3390,17 @@ def get_consolidated_vehicles():
                                 
                                 card_key = f"{truck_number}_{plant_depot}_pending"
                                 
-                                # For Prev Day cards, get unloading from billing date up to (but not including) selected date
-                                # This includes historical unloading that was already consumed in FIFO calculation
+                                # For Prev Day cards, get unloading from billing date up to and including selected date
+                                # FIFO: Today's unloading should be assigned to Prev Day pending first
                                 prev_day_unloading = []
                                 
-                                # Query for unloading between billing_date and selected_date (exclusive)
-                                # For vehicles billed today, exclude today's unloading (let today's card get it)
-                                unloading_end_date = selected_date if is_billed_today else selected_date
-                                unloading_end_op = '<' if is_billed_today else '<='
+                                # Query for unloading between billing_date and selected_date (inclusive)
+                                # Include today's unloading for FIFO allocation to pending
+                                unloading_end_date = selected_date
+                                unloading_end_op = '<='
                                 
                                 cursor.execute(f'''
-                                    SELECT dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
+                                    SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
                                     FROM vehicle_unloading
                                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date {unloading_end_op} ?
                                     ORDER BY unloading_date ASC
@@ -3409,28 +3409,19 @@ def get_consolidated_vehicles():
                                 historical_unloading = cursor.fetchall()
                                 
                                 if historical_unloading and (has_any_pending or not is_billed_today):
-                                    # Track cumulative unloading assigned to this card
-                                    cumulative_ppc = 0
-                                    cumulative_premium = 0
-                                    cumulative_opc = 0
-                                    
-                                    # If we added extra invoices (total_ppc > card_pending_ppc), use total_ppc as limit
-                                    # Otherwise use card_pending_ppc (FIFO pending)
-                                    limit_ppc = total_ppc if total_ppc > card_pending_ppc + 0.01 else card_pending_ppc
-                                    limit_premium = total_premium if total_premium > card_pending_premium + 0.01 else card_pending_premium
-                                    limit_opc = total_opc if total_opc > card_pending_opc + 0.01 else card_pending_opc
-                                    
-                                    # Process historical unloading records
+                                    # Process all historical unloading records (FIFO: assign all unloading to pending)
                                     for unload_row in historical_unloading:
-                                        dealer_code = unload_row[0]
-                                        unloading_dealer = unload_row[1]
-                                        unloading_point = unload_row[2]
-                                        ppc_unloaded = unload_row[3] or 0
-                                        premium_unloaded = unload_row[4] or 0
-                                        opc_unloaded = unload_row[5] or 0
-                                        unload_date = unload_row[6]
+                                        unload_id = unload_row[0]
+                                        dealer_code = unload_row[1]
+                                        unloading_dealer = unload_row[2]
+                                        unloading_point = unload_row[3]
+                                        ppc_unloaded = unload_row[4] or 0
+                                        premium_unloaded = unload_row[5] or 0
+                                        opc_unloaded = unload_row[6] or 0
+                                        unload_date = unload_row[7]
                                         
                                         unload = {
+                                            'id': unload_id,
                                             'dealer_code': dealer_code,
                                             'dealer_name': unloading_dealer,
                                             'point': unloading_point,
@@ -3439,60 +3430,16 @@ def get_consolidated_vehicles():
                                             'opc_unloaded': opc_unloaded,
                                             'unloading_date': unload_date
                                         }
-                                        ppc_unloaded = unload.get('ppc_unloaded', 0)
-                                        premium_unloaded = unload.get('premium_unloaded', 0)
-                                        opc_unloaded = unload.get('opc_unloaded', 0)
                                         
-                                        if not has_any_pending and not is_billed_today:
-                                            # No pending and not billed today - assign all unloading (fully unloaded on this date)
-                                            prev_day_unloading.append(unload)
-                                        else:
-                                            # Has pending - filter by product type and limit to limit amount
-                                            include_unloading = True
-                                            
-                                            # Check each product type
-                                            if ppc_unloaded > 0:
-                                                if limit_ppc > 0.01 and cumulative_ppc < limit_ppc:
-                                                    pass
-                                                else:
-                                                    include_unloading = False
-                                            
-                                            if premium_unloaded > 0:
-                                                if limit_premium > 0.01 and cumulative_premium < limit_premium:
-                                                    pass
-                                                else:
-                                                    include_unloading = False
-                                            
-                                            if opc_unloaded > 0:
-                                                if limit_opc > 0.01 and cumulative_opc < limit_opc:
-                                                    pass
-                                                else:
-                                                    include_unloading = False
-                                            
-                                            # Also check that at least one product type has limit
-                                            has_any_match = (ppc_unloaded > 0 and limit_ppc > 0.01) or \
-                                                           (premium_unloaded > 0 and limit_premium > 0.01) or \
-                                                           (opc_unloaded > 0 and limit_opc > 0.01)
-                                            
-                                            if include_unloading and has_any_match:
-                                                prev_day_unloading.append(unload)
-                                                cumulative_ppc += ppc_unloaded
-                                                cumulative_premium += premium_unloaded
-                                                cumulative_opc += opc_unloaded
+                                        # Add all unloading to Prev Day card (FIFO logic)
+                                        prev_day_unloading.append(unload)
                                 
-                                # Calculate remaining after historical unloading
-                                card_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in prev_day_unloading)
-                                card_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in prev_day_unloading)
-                                card_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in prev_day_unloading)
+                                # Create card if there's pending OR if there's unloading assigned
+                                # This shows vehicles that have pending material (even if fully unloaded today)
+                                has_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
+                                has_unloading = len(prev_day_unloading) > 0
                                 
-                                remaining_ppc = max(0, card_pending_ppc - card_unloaded_ppc)
-                                remaining_premium = max(0, card_pending_premium - card_unloaded_premium)
-                                remaining_opc = max(0, card_pending_opc - card_unloaded_opc)
-                                
-                                # Only create card if there's remaining material after unloading
-                                has_remaining = remaining_ppc > 0.01 or remaining_premium > 0.01 or remaining_opc > 0.01
-                                
-                                if has_remaining:
+                                if has_pending or has_unloading:
                                     trucks_today[card_key] = {
                                         'truck_number': truck_number,
                                         'card_key': card_key,
