@@ -3082,11 +3082,14 @@ def get_consolidated_vehicles():
                     # Get the IDs of unloading records assigned to the pending card
                     pending_card_unloading_ids = set(u.get('id') for u in pending_card.get('unloading_details', []))
                     
-                    # Assign remaining unloading (not in pending card) to today's card
+                    # For Today cards, only assign unloading from the selected date
+                    # Historical unloading should be consumed by Prev Day card via FIFO
                     today_card_unloading = []
                     for unload in all_unloading:
-                        # Check if this unloading was already assigned to pending card by ID
-                        if unload.get('id') not in pending_card_unloading_ids:
+                        # Only include unloading from selected date (today)
+                        # AND not already assigned to pending card
+                        if (unload.get('unloading_date') == selected_date and 
+                            unload.get('id') not in pending_card_unloading_ids):
                             today_card_unloading.append(transform_unloading_record(unload))
                     
                     truck_data['unloading_details'] = today_card_unloading
