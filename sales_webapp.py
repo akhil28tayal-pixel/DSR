@@ -1108,7 +1108,7 @@ def process_ageing_report():
                 t1 = float(row['T1']) if pd.notna(row['T1']) else 0.0
                 
                 # Calculate total outstanding and payment due today
-                total_outstanding = outstanding_amt - spl_gl_balance
+                total_outstanding = outstanding_amt + spl_gl_balance
                 payment_due_today = outstanding_amt + spl_gl_balance - t1
                 
                 # Only include customers with payment due today > 0
