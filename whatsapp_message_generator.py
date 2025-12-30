@@ -127,7 +127,7 @@ def get_dealer_billing_data(dealer_code, billing_date):
         print(f"Error getting billing data: {str(e)}")
         return None
 
-def generate_whatsapp_message(dealer_code, billing_date, truck_numbers=None):
+def generate_whatsapp_message(dealer_code, billing_date, truck_numbers=None, custom_due_date=None):
     """Generate WhatsApp message for dealer billing with separate invoices"""
     
     # Get billing data
@@ -136,8 +136,11 @@ def generate_whatsapp_message(dealer_code, billing_date, truck_numbers=None):
     if not billing_data:
         return f"No billing data found for dealer {dealer_code} on {billing_date}"
     
-    # Calculate due date
-    due_date = calculate_due_date(billing_date)
+    # Use custom due date if provided, otherwise calculate it
+    if custom_due_date:
+        due_date = custom_due_date
+    else:
+        due_date = calculate_due_date(billing_date)
     
     # Format dates for display
     billing_date_formatted = datetime.strptime(billing_date, '%Y-%m-%d').strftime('%d/%m/%Y')

@@ -1039,12 +1039,13 @@ def generate_whatsapp_message_api():
         dealer_code = data.get('dealer_code')
         billing_date = data.get('date')
         truck_numbers = data.get('truck_numbers', [])
+        due_date = data.get('due_date')  # Get custom due date from request
         
         if not dealer_code or not billing_date:
             return jsonify({'success': False, 'message': 'Dealer code and date are required'})
         
-        # Generate the WhatsApp message
-        message = generate_whatsapp_message(int(dealer_code), billing_date, truck_numbers)
+        # Generate the WhatsApp message with custom due date
+        message = generate_whatsapp_message(int(dealer_code), billing_date, truck_numbers, due_date)
         
         # Get billing data for additional info
         billing_data = get_dealer_billing_data(int(dealer_code), billing_date)

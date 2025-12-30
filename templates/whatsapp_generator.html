@@ -308,6 +308,11 @@
                                     <label for="billingDate" class="form-label">Billing Date</label>
                                     <input type="date" class="form-control" id="billingDate" required>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="dueDate" class="form-label">Payment Due Date</label>
+                                    <input type="date" class="form-control" id="dueDate" required>
+                                    <small class="text-muted">This date will appear in the WhatsApp message</small>
+                                </div>
                                 <button type="button" class="btn btn-primary w-100" onclick="loadDealers()">
                                     <i class="fas fa-search me-2"></i>Find Dealers
                                 </button>
@@ -652,6 +657,15 @@
                 return;
             }
             
+            // Get the due date from the input
+            const dueDateInput = document.getElementById('dueDate');
+            const dueDate = dueDateInput.value;
+            
+            if (!dueDate) {
+                alert('Please select a payment due date');
+                return;
+            }
+            
             // Show loading for this specific dealer
             document.getElementById(`messageLoading_${dealerIndex}`).style.display = 'block';
             document.getElementById(`messageContent_${dealerIndex}`).style.display = 'none';
@@ -662,6 +676,7 @@
                 dealer_code: selectedDealer.code,
                 dealer_name: selectedDealer.name,
                 date: selectedDate,
+                due_date: dueDate,
                 invoice_count: selectedDealer.invoiceCount
             });
             
@@ -674,6 +689,7 @@
                 body: JSON.stringify({
                     dealer_code: selectedDealer.code,
                     date: selectedDate,
+                    due_date: dueDate,
                     truck_numbers: [] // Empty array - will use database truck numbers
                 })
             })
