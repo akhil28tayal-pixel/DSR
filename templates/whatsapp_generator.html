@@ -291,6 +291,12 @@
                     <i class="fas fa-truck-loading me-2"></i>Unloading Message
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="payment-reminder-tab" data-bs-toggle="tab" data-bs-target="#payment-reminder-content" 
+                        type="button" role="tab" aria-controls="payment-reminder-content" aria-selected="false">
+                    <i class="fas fa-bell me-2"></i>Payment Reminder
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="generatorTabContent">
@@ -397,6 +403,66 @@
                                         No dealers with unloading found for the selected date. Please choose a different date.
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Reminder Tab Content -->
+            <div class="tab-pane fade" id="payment-reminder-content" role="tabpanel" aria-labelledby="payment-reminder-tab">
+                <div class="row">
+                    <!-- File Upload Section -->
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;">
+                                <i class="fas fa-file-excel me-2"></i>Upload Ageing Report
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="ageingFile" class="form-label">Select Excel File (Ageing Report)</label>
+                                    <input type="file" class="form-control" id="ageingFile" accept=".xlsx,.xls" required>
+                                    <small class="text-muted">Upload Excel file with columns: Customer, Cust.Name, Outstanding Amt., SPL GL "Y" Balance, T1</small>
+                                </div>
+                                <button type="button" class="btn btn-danger w-100" onclick="uploadAgeingReport()" id="uploadBtn">
+                                    <i class="fas fa-upload me-2"></i>Upload & Generate Reminders
+                                </button>
+                                
+                                <div id="uploadProgress" class="mt-3" style="display: none;">
+                                    <div class="progress">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger" role="progressbar" style="width: 100%"></div>
+                                    </div>
+                                    <p class="text-center mt-2">Processing file...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Reminder List -->
+                    <div class="col-md-12 mb-4">
+                        <div class="card" id="reminderCard" style="display: none;">
+                            <div class="card-header" style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%) !important;">
+                                <i class="fas fa-bell me-2"></i>Payment Reminders
+                                <span id="reminderCount" class="badge bg-light text-dark ms-2"></span>
+                            </div>
+                            <div class="card-body">
+                                <div id="reminderList" class="row">
+                                    <!-- Reminders will be loaded here -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="noReminders" style="display: none;">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No customers with payment due today found in the uploaded file.
+                            </div>
+                        </div>
+                        
+                        <div id="uploadError" style="display: none;">
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span id="errorMessage"></span>
                             </div>
                         </div>
                     </div>
@@ -1143,6 +1209,188 @@
                 const successful = document.execCommand('copy');
                 if (successful) {
                     showUnloadingCopySuccess(dealerIndex);
+                } else {
+                    throw new Error('Copy command failed');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                alert('Copy failed. Please select and copy the message manually.');
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+
+        // ============== Payment Reminder Functions ==============
+        
+        function uploadAgeingReport() {
+            const fileInput = document.getElementById('ageingFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select an Excel file to upload');
+                return;
+            }
+            
+            // Hide previous results
+            document.getElementById('reminderCard').style.display = 'none';
+            document.getElementById('noReminders').style.display = 'none';
+            document.getElementById('uploadError').style.display = 'none';
+            
+            // Show progress
+            document.getElementById('uploadProgress').style.display = 'block';
+            document.getElementById('uploadBtn').disabled = true;
+            
+            // Create FormData
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Upload file
+            fetch('/process_ageing_report', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('uploadProgress').style.display = 'none';
+                document.getElementById('uploadBtn').disabled = false;
+                
+                if (data.success) {
+                    displayPaymentReminders(data.reminders);
+                } else {
+                    document.getElementById('uploadError').style.display = 'block';
+                    document.getElementById('errorMessage').textContent = data.message || 'Failed to process file';
+                }
+            })
+            .catch(error => {
+                document.getElementById('uploadProgress').style.display = 'none';
+                document.getElementById('uploadBtn').disabled = false;
+                document.getElementById('uploadError').style.display = 'block';
+                document.getElementById('errorMessage').textContent = 'Error uploading file: ' + error.message;
+            });
+        }
+        
+        function displayPaymentReminders(reminders) {
+            if (!reminders || reminders.length === 0) {
+                document.getElementById('noReminders').style.display = 'block';
+                return;
+            }
+            
+            const reminderList = document.getElementById('reminderList');
+            const reminderCount = document.getElementById('reminderCount');
+            
+            reminderCount.textContent = `${reminders.length} Customer${reminders.length > 1 ? 's' : ''}`;
+            
+            reminderList.innerHTML = '';
+            
+            reminders.forEach((reminder, index) => {
+                const reminderCard = document.createElement('div');
+                reminderCard.className = 'col-12 mb-3';
+                
+                const escapedCustomerName = reminder.customer_name.replace(/'/g, "\\'");
+                
+                reminderCard.innerHTML = `
+                    <div class="card border-danger">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div>
+                                    <h5 class="mb-1">${reminder.customer_name}</h5>
+                                    <small class="text-muted">Customer Code: ${reminder.customer_code}</small>
+                                </div>
+                                <span class="badge bg-danger">Payment Due Today</span>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <small class="text-muted">Outstanding Amount</small>
+                                    <div class="fw-bold">Rs. ${reminder.outstanding_amt.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">SPL GL Balance</small>
+                                    <div class="fw-bold">Rs. ${reminder.spl_gl_balance.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">T1 (Recent)</small>
+                                    <div class="fw-bold">Rs. ${reminder.t1.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                                <div class="col-md-3">
+                                    <small class="text-muted">Payment Due Today</small>
+                                    <div class="fw-bold text-danger">Rs. ${reminder.payment_due_today.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="border-top pt-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0 text-danger">
+                                        <i class="fab fa-whatsapp me-2"></i>Payment Reminder Message
+                                    </h6>
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="copyReminderMessage(${index})" id="reminderCopyBtn_${index}">
+                                        <i class="fas fa-copy me-1"></i>Copy
+                                    </button>
+                                </div>
+                                <div class="message-box bg-light p-3 rounded" id="reminderMessageContent_${index}" style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem;">
+${reminder.message}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                reminderList.appendChild(reminderCard);
+            });
+            
+            document.getElementById('reminderCard').style.display = 'block';
+        }
+        
+        function copyReminderMessage(reminderIndex) {
+            const messageElement = document.getElementById(`reminderMessageContent_${reminderIndex}`);
+            const messageText = messageElement.textContent || messageElement.innerText;
+            
+            if (!messageText || messageText.trim() === '') {
+                alert('No message to copy.');
+                return;
+            }
+            
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(messageText).then(() => {
+                    showReminderCopySuccess(reminderIndex);
+                }).catch(err => {
+                    console.error('Clipboard API failed:', err);
+                    fallbackReminderCopy(messageText, reminderIndex);
+                });
+            } else {
+                fallbackReminderCopy(messageText, reminderIndex);
+            }
+        }
+        
+        function showReminderCopySuccess(reminderIndex) {
+            const button = document.getElementById(`reminderCopyBtn_${reminderIndex}`);
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                button.classList.remove('btn-danger');
+                button.classList.add('btn-success');
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-danger');
+                }, 2000);
+            }
+        }
+        
+        function fallbackReminderCopy(text, reminderIndex) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showReminderCopySuccess(reminderIndex);
                 } else {
                     throw new Error('Copy command failed');
                 }

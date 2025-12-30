@@ -1060,6 +1060,104 @@ def generate_whatsapp_message_api():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+# ============== Payment Reminder Routes ==============
+
+@app.route('/process_ageing_report', methods=['POST'])
+def process_ageing_report():
+    """Process uploaded ageing report Excel file and generate payment reminders"""
+    try:
+        import pandas as pd
+        from datetime import datetime
+        from werkzeug.utils import secure_filename
+        import os
+        
+        # Check if file is present
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file uploaded'})
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'})
+        
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            return jsonify({'success': False, 'message': 'Please upload an Excel file (.xlsx or .xls)'})
+        
+        # Read Excel file
+        try:
+            df = pd.read_excel(file)
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'Error reading Excel file: {str(e)}'})
+        
+        # Validate required columns
+        required_columns = ['Customer', 'Cust.Name', 'Outstanding Amt.', 'SPL GL "Y" Balance', 'T1']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            return jsonify({'success': False, 'message': f'Missing required columns: {", ".join(missing_columns)}'})
+        
+        # Process each customer and calculate payment due today
+        reminders = []
+        
+        for index, row in df.iterrows():
+            try:
+                customer_code = str(row['Customer'])
+                customer_name = str(row['Cust.Name'])
+                outstanding_amt = float(row['Outstanding Amt.']) if pd.notna(row['Outstanding Amt.']) else 0.0
+                spl_gl_balance = float(row['SPL GL "Y" Balance']) if pd.notna(row['SPL GL "Y" Balance']) else 0.0
+                t1 = float(row['T1']) if pd.notna(row['T1']) else 0.0
+                
+                # Calculate payment due today: Outstanding + SPL GL Balance - T1
+                payment_due_today = outstanding_amt + spl_gl_balance - t1
+                
+                # Only include customers with payment due today > 0
+                if payment_due_today > 0.01:  # Small threshold to avoid floating point issues
+                    # Generate WhatsApp message
+                    message = f"""*PAYMENT REMINDER*
+
+Dear {customer_name},
+
+This is a friendly reminder regarding your outstanding payment.
+
+*Payment Details:*
+Outstanding Amount: Rs. {outstanding_amt:,.2f}
+SPL GL Balance: Rs. {spl_gl_balance:,.2f}
+Recent Billing (T1): Rs. {t1:,.2f}
+
+*PAYMENT DUE TODAY: Rs. {payment_due_today:,.2f}*
+
+Please arrange the payment at the earliest to avoid any inconvenience.
+
+For any queries, please contact us.
+
+Thank you for your cooperation."""
+                    
+                    reminders.append({
+                        'customer_code': customer_code,
+                        'customer_name': customer_name,
+                        'outstanding_amt': outstanding_amt,
+                        'spl_gl_balance': spl_gl_balance,
+                        't1': t1,
+                        'payment_due_today': payment_due_today,
+                        'message': message
+                    })
+            except Exception as e:
+                # Skip rows with errors
+                continue
+        
+        # Sort by payment due today (descending)
+        reminders.sort(key=lambda x: x['payment_due_today'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'reminders': reminders,
+            'total_customers': len(reminders),
+            'total_amount_due': sum(r['payment_due_today'] for r in reminders)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing file: {str(e)}'})
+
 # ============== Unloading WhatsApp Generator Routes ==============
 
 @app.route('/get_dealers_for_unloading_date', methods=['POST'])
