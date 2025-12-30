@@ -1111,13 +1111,18 @@ def process_ageing_report():
                 total_outstanding = outstanding_amt + spl_gl_balance
                 payment_due_today = outstanding_amt + spl_gl_balance - t1
                 
+                # Round to ceil of nearest 10
+                import math
+                total_outstanding_rounded = math.ceil(total_outstanding / 10) * 10
+                payment_due_today_rounded = math.ceil(payment_due_today / 10) * 10
+                
                 # Only include customers with payment due today > 0
                 if payment_due_today > 0.01:  # Small threshold to avoid floating point issues
                     # Generate WhatsApp message
                     message = f"""*PAYMENT REMINDER*
 
-Total Outstanding: Rs. {total_outstanding:,.2f}
-*Payment Due Today: Rs. {payment_due_today:,.2f}*"""
+Total Outstanding: Rs. {total_outstanding_rounded:,.0f}
+*Payment Due Today: Rs. {payment_due_today_rounded:,.0f}*"""
                     
                     reminders.append({
                         'customer_code': customer_code,
