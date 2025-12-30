@@ -1300,19 +1300,11 @@
                             </div>
                             
                             <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <small class="text-muted">Outstanding Amount</small>
-                                    <div class="fw-bold">Rs. ${reminder.outstanding_amt.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">Total Outstanding</small>
+                                    <div class="fw-bold">Rs. ${reminder.total_outstanding.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                                 </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">SPL GL Balance</small>
-                                    <div class="fw-bold">Rs. ${reminder.spl_gl_balance.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                                </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted">T1 (Recent)</small>
-                                    <div class="fw-bold">Rs. ${reminder.t1.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                                </div>
-                                <div class="col-md-3">
+                                <div class="col-md-6">
                                     <small class="text-muted">Payment Due Today</small>
                                     <div class="fw-bold text-danger">Rs. ${reminder.payment_due_today.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                                 </div>

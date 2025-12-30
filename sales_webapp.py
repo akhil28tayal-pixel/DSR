@@ -1107,7 +1107,8 @@ def process_ageing_report():
                 spl_gl_balance = float(row['SPL GL "Y" Balance']) if pd.notna(row['SPL GL "Y" Balance']) else 0.0
                 t1 = float(row['T1']) if pd.notna(row['T1']) else 0.0
                 
-                # Calculate payment due today: Outstanding + SPL GL Balance - T1
+                # Calculate total outstanding and payment due today
+                total_outstanding = outstanding_amt - spl_gl_balance
                 payment_due_today = outstanding_amt + spl_gl_balance - t1
                 
                 # Only include customers with payment due today > 0
@@ -1117,20 +1118,8 @@ def process_ageing_report():
 
 Dear {customer_name},
 
-This is a friendly reminder regarding your outstanding payment.
-
-*Payment Details:*
-Outstanding Amount: Rs. {outstanding_amt:,.2f}
-SPL GL Balance: Rs. {spl_gl_balance:,.2f}
-Recent Billing (T1): Rs. {t1:,.2f}
-
-*PAYMENT DUE TODAY: Rs. {payment_due_today:,.2f}*
-
-Please arrange the payment at the earliest to avoid any inconvenience.
-
-For any queries, please contact us.
-
-Thank you for your cooperation."""
+Total Outstanding: Rs. {total_outstanding:,.2f}
+*Payment Due Today: Rs. {payment_due_today:,.2f}*"""
                     
                     reminders.append({
                         'customer_code': customer_code,
@@ -1138,6 +1127,7 @@ Thank you for your cooperation."""
                         'outstanding_amt': outstanding_amt,
                         'spl_gl_balance': spl_gl_balance,
                         't1': t1,
+                        'total_outstanding': total_outstanding,
                         'payment_due_today': payment_due_today,
                         'message': message
                     })
