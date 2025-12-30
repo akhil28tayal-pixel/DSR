@@ -1116,8 +1116,6 @@ def process_ageing_report():
                     # Generate WhatsApp message
                     message = f"""*PAYMENT REMINDER*
 
-Dear {customer_name},
-
 Total Outstanding: Rs. {total_outstanding:,.2f}
 *Payment Due Today: Rs. {payment_due_today:,.2f}*"""
                     
