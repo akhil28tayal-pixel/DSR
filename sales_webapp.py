@@ -3242,6 +3242,13 @@ def get_consolidated_vehicles():
         ''', (month_start, selected_date))
         earlier_billed_trucks = [row[0] for row in cursor.fetchall()]
         
+        # Also include vehicles from opening_balance_map that are not in earlier_billed_trucks
+        # This handles the case where selected_date = month_start (e.g., Jan 1)
+        # and there are no trucks billed earlier in the month, but there are opening balances
+        for truck_number in opening_balance_map.keys():
+            if truck_number not in earlier_billed_trucks:
+                earlier_billed_trucks.append(truck_number)
+        
         for truck_number in earlier_billed_trucks:
             # For trucks NOT billed today: show all pending as a card
             # For trucks billed today: add pending from earlier to the existing card
