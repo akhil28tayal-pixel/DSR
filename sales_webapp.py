@@ -2858,7 +2858,7 @@ def get_consolidated_vehicles():
                             (month_year, vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         ''', (prev_month_year, truck, prev_month_end, dealer_code, ppc, premium, opc))
-                    conn.commit()
+                    db.conn.commit()
                     print(f"INFO: Successfully saved {len(vehicles_to_save)} vehicles for {prev_month_year}")
         
         if truck_numbers_today:
