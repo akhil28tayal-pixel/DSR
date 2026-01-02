@@ -1868,33 +1868,35 @@ def get_dealer_balance():
                     nov_opening_premium = oct_closing_row[1] if oct_closing_row else 0
                     nov_opening_opc = oct_closing_row[2] if oct_closing_row else 0
                     
-                    # Get November billing
+                    # Get November billing (use < instead of <= to match UI's before_date logic)
+                    # This calculates transactions BEFORE the last day of November, not including it
+                    # Matching the UI's calculation: sale_date >= month_start AND sale_date < before_date
                     if is_other:
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                             FROM other_dealers_billing
-                            WHERE dealer_name = ? AND sale_date >= ? AND sale_date <= ?
+                            WHERE dealer_name = ? AND sale_date >= ? AND sale_date < ?
                         ''', (dealer_name, prev_prev_month_start, prev_prev_month_end))
                     else:
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                             FROM sales_data
-                            WHERE dealer_code = ? AND sale_date >= ? AND sale_date <= ?
+                            WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?
                         ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
                     nov_billed = cursor.fetchone()
                     
-                    # Get November unloading
+                    # Get November unloading (use < instead of <= to match UI's before_date logic)
                     if is_other:
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                             FROM vehicle_unloading
-                            WHERE unloading_dealer = ? AND is_other_dealer = 1 AND unloading_date >= ? AND unloading_date <= ?
+                            WHERE unloading_dealer = ? AND is_other_dealer = 1 AND unloading_date >= ? AND unloading_date < ?
                         ''', (dealer_name, prev_prev_month_start, prev_prev_month_end))
                     else:
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                             FROM vehicle_unloading
-                            WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date <= ?
+                            WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date < ?
                         ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
                     nov_unloaded = cursor.fetchone()
                     
