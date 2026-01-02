@@ -1819,49 +1819,59 @@ def get_dealer_balance():
                         }
                 
                 # Calculate closing balance for each dealer
+                # IMPORTANT: opening_material_balance stores CLOSING balances
+                # Entry with month_year='2025-11' contains OCTOBER 31 closing (manually added as Nov opening)
+                # We need to calculate NOVEMBER closing first, then use it as DECEMBER opening
                 dealers_to_save = []
+                
+                # Get previous-previous month dates for November transactions
+                prev_prev_month_start = prev_prev_month_dt.replace(day=1).strftime('%Y-%m-%d')
+                last_day_prev_prev = monthrange(prev_prev_month_dt.year, prev_prev_month_dt.month)[1]
+                prev_prev_month_end = prev_prev_month_dt.replace(day=last_day_prev_prev).strftime('%Y-%m-%d')
+                
                 for dealer_code, dealer_info in dealers_to_process.items():
-                    # Get opening from month before previous month
+                    # Get October closing (stored in Nov entry) - this is November opening
                     cursor.execute('''
                         SELECT ppc_qty, premium_qty, opc_qty
                         FROM opening_material_balance
                         WHERE month_year = ? AND dealer_code = ?
                     ''', (prev_prev_month_year, dealer_code))
-                    opening_row = cursor.fetchone()
-                    opening_ppc = opening_row[0] if opening_row else 0
-                    opening_premium = opening_row[1] if opening_row else 0
-                    opening_opc = opening_row[2] if opening_row else 0
+                    oct_closing_row = cursor.fetchone()
+                    nov_opening_ppc = oct_closing_row[0] if oct_closing_row else 0
+                    nov_opening_premium = oct_closing_row[1] if oct_closing_row else 0
+                    nov_opening_opc = oct_closing_row[2] if oct_closing_row else 0
                     
-                    # Get previous month's billing
+                    # Get November billing
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                         FROM sales_data
                         WHERE dealer_code = ? AND sale_date >= ? AND sale_date <= ?
-                    ''', (dealer_code, prev_month_start_date, prev_month_end_date))
-                    billed = cursor.fetchone()
+                    ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
+                    nov_billed = cursor.fetchone()
                     
-                    # Get previous month's unloading
+                    # Get November unloading
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                         FROM vehicle_unloading
                         WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date <= ?
-                    ''', (dealer_code, prev_month_start_date, prev_month_end_date))
-                    unloaded = cursor.fetchone()
+                    ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
+                    nov_unloaded = cursor.fetchone()
                     
-                    # Calculate closing
-                    closing_ppc = max(0, opening_ppc + (billed[0] or 0) - (unloaded[0] or 0))
-                    closing_premium = max(0, opening_premium + (billed[1] or 0) - (unloaded[1] or 0))
-                    closing_opc = max(0, opening_opc + (billed[2] or 0) - (unloaded[2] or 0))
+                    # Calculate November closing = October closing + November billing - November unloading
+                    nov_closing_ppc = max(0, nov_opening_ppc + (nov_billed[0] or 0) - (nov_unloaded[0] or 0))
+                    nov_closing_premium = max(0, nov_opening_premium + (nov_billed[1] or 0) - (nov_unloaded[1] or 0))
+                    nov_closing_opc = max(0, nov_opening_opc + (nov_billed[2] or 0) - (nov_unloaded[2] or 0))
                     
-                    total_closing = closing_ppc + closing_premium + closing_opc
-                    if total_closing > 0.01:
+                    # Save PREVIOUS MONTH's closing (November closing) for current month (December) to use
+                    total_nov_closing = nov_closing_ppc + nov_closing_premium + nov_closing_opc
+                    if total_nov_closing > 0.01:
                         dealers_to_save.append((
                             dealer_code,
                             dealer_info['dealer_name'],
                             dealer_info['dealer_type'],
-                            closing_ppc,
-                            closing_premium,
-                            closing_opc
+                            nov_closing_ppc,
+                            nov_closing_premium,
+                            nov_closing_opc
                         ))
                         # Add to all_dealers for current processing
                         all_dealers[dealer_code] = {
