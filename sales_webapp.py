@@ -2781,77 +2781,80 @@ def get_consolidated_vehicles():
                         vehicles_to_process.append(row[0])
                 
                 # Calculate closing balance for each vehicle
+                # Note: pending_vehicle_unloading stores CLOSING balances, not opening
+                # So prev_prev_month_year entry is November CLOSING, which becomes December OPENING
                 vehicles_to_save = []
                 for truck in vehicles_to_process:
-                    # Get opening balance from month before previous month
+                    # Get November closing (which becomes December opening)
+                    # The entry with month_year='2025-11' contains November's CLOSING balance
                     cursor.execute('''
                         SELECT ppc_qty, premium_qty, opc_qty, dealer_code
                         FROM pending_vehicle_unloading
                         WHERE vehicle_number = ? AND month_year = ?
                     ''', (truck, prev_prev_month_year))
-                    opening_row = cursor.fetchone()
-                    opening_ppc = opening_row[0] if opening_row else 0
-                    opening_premium = opening_row[1] if opening_row else 0
-                    opening_opc = opening_row[2] if opening_row else 0
-                    dealer_code = opening_row[3] if opening_row else None
+                    nov_closing_row = cursor.fetchone()
+                    dec_opening_ppc = nov_closing_row[0] if nov_closing_row else 0
+                    dec_opening_premium = nov_closing_row[1] if nov_closing_row else 0
+                    dec_opening_opc = nov_closing_row[2] if nov_closing_row else 0
+                    dealer_code = nov_closing_row[3] if nov_closing_row else None
                     
-                    # Get previous month's billing
+                    # Get December billing
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0),
                                (SELECT dealer_code FROM sales_data WHERE truck_number = ? ORDER BY sale_date DESC LIMIT 1)
                         FROM sales_data
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
                     ''', (truck, truck, prev_month_start, prev_month_end))
-                    billed = cursor.fetchone()
-                    if not dealer_code and billed[3]:
-                        dealer_code = billed[3]
+                    dec_billed = cursor.fetchone()
+                    if not dealer_code and dec_billed[3]:
+                        dealer_code = dec_billed[3]
                     
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                         FROM other_dealers_billing
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
                     ''', (truck, prev_month_start, prev_month_end))
-                    other_billed = cursor.fetchone()
+                    dec_other_billed = cursor.fetchone()
                     
-                    # Get previous month's unloading
+                    # Get December unloading
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                         FROM vehicle_unloading
                         WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                     ''', (truck, prev_month_start, prev_month_end))
-                    unloaded = cursor.fetchone()
+                    dec_unloaded = cursor.fetchone()
                     
-                    # Calculate closing
-                    closing_ppc = max(0, opening_ppc + (billed[0] or 0) + (other_billed[0] or 0) - (unloaded[0] or 0))
-                    closing_premium = max(0, opening_premium + (billed[1] or 0) + (other_billed[1] or 0) - (unloaded[1] or 0))
-                    closing_opc = max(0, opening_opc + (billed[2] or 0) + (other_billed[2] or 0) - (unloaded[2] or 0))
+                    # Calculate December closing = December opening + December billing - December unloading
+                    dec_closing_ppc = max(0, dec_opening_ppc + (dec_billed[0] or 0) + (dec_other_billed[0] or 0) - (dec_unloaded[0] or 0))
+                    dec_closing_premium = max(0, dec_opening_premium + (dec_billed[1] or 0) + (dec_other_billed[1] or 0) - (dec_unloaded[1] or 0))
+                    dec_closing_opc = max(0, dec_opening_opc + (dec_billed[2] or 0) + (dec_other_billed[2] or 0) - (dec_unloaded[2] or 0))
                     
-                    # Check if vehicle had activity in previous month
-                    total_billed = (billed[0] or 0) + (billed[1] or 0) + (billed[2] or 0) + (other_billed[0] or 0) + (other_billed[1] or 0) + (other_billed[2] or 0)
-                    total_unloaded = (unloaded[0] or 0) + (unloaded[1] or 0) + (unloaded[2] or 0)
-                    had_activity = total_billed > 0.01 or total_unloaded > 0.01
+                    # Check if vehicle had activity in December
+                    total_dec_billed = (dec_billed[0] or 0) + (dec_billed[1] or 0) + (dec_billed[2] or 0) + (dec_other_billed[0] or 0) + (dec_other_billed[1] or 0) + (dec_other_billed[2] or 0)
+                    total_dec_unloaded = (dec_unloaded[0] or 0) + (dec_unloaded[1] or 0) + (dec_unloaded[2] or 0)
+                    had_dec_activity = total_dec_billed > 0.01 or total_dec_unloaded > 0.01
                     
-                    total_closing = closing_ppc + closing_premium + closing_opc
-                    # Only save if there's closing balance AND vehicle had activity in the month
-                    if total_closing > 0.01 and had_activity:
-                        vehicles_to_save.append((truck, dealer_code, closing_ppc, closing_premium, closing_opc))
+                    total_dec_closing = dec_closing_ppc + dec_closing_premium + dec_closing_opc
+                    # Only save if there's closing balance AND vehicle had activity in December
+                    if total_dec_closing > 0.01 and had_dec_activity:
+                        vehicles_to_save.append((truck, dealer_code, dec_closing_ppc, dec_closing_premium, dec_closing_opc))
                         opening_balance_map[truck] = {
                             'billing_date': 'Previous Month',
                             'dealer_code': dealer_code,
-                            'ppc': closing_ppc,
-                            'premium': closing_premium,
-                            'opc': closing_opc,
-                            'total': total_closing
+                            'ppc': dec_closing_ppc,
+                            'premium': dec_closing_premium,
+                            'opc': dec_closing_opc,
+                            'total': total_dec_closing
                         }
                         if truck in truck_numbers_today:
                             if truck not in previous_billings:
                                 previous_billings[truck] = []
                             previous_billings[truck].append({
                                 'sale_date': 'Opening',
-                                'ppc': closing_ppc,
-                                'premium': closing_premium,
-                                'opc': closing_opc,
-                                'total': total_closing,
+                                'ppc': dec_closing_ppc,
+                                'premium': dec_closing_premium,
+                                'opc': dec_closing_opc,
+                                'total': total_dec_closing,
                                 'dealers': 'Opening Balance'
                             })
                 
