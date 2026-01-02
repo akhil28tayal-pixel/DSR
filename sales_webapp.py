@@ -2826,8 +2826,14 @@ def get_consolidated_vehicles():
                     closing_premium = max(0, opening_premium + (billed[1] or 0) + (other_billed[1] or 0) - (unloaded[1] or 0))
                     closing_opc = max(0, opening_opc + (billed[2] or 0) + (other_billed[2] or 0) - (unloaded[2] or 0))
                     
+                    # Check if vehicle had activity in previous month
+                    total_billed = (billed[0] or 0) + (billed[1] or 0) + (billed[2] or 0) + (other_billed[0] or 0) + (other_billed[1] or 0) + (other_billed[2] or 0)
+                    total_unloaded = (unloaded[0] or 0) + (unloaded[1] or 0) + (unloaded[2] or 0)
+                    had_activity = total_billed > 0.01 or total_unloaded > 0.01
+                    
                     total_closing = closing_ppc + closing_premium + closing_opc
-                    if total_closing > 0.01:
+                    # Only save if there's closing balance AND vehicle had activity in the month
+                    if total_closing > 0.01 and had_activity:
                         vehicles_to_save.append((truck, dealer_code, closing_ppc, closing_premium, closing_opc))
                         opening_balance_map[truck] = {
                             'billing_date': 'Previous Month',
