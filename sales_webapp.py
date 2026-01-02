@@ -1798,7 +1798,7 @@ def get_dealer_balance():
                         'dealer_type': dealer_type
                     }
                 
-                # Get dealers from previous month sales
+                # Get dealers from previous month sales (these are regular dealers, not Other)
                 cursor.execute('''
                     SELECT DISTINCT dealer_code, dealer_name
                     FROM sales_data
@@ -1806,13 +1806,16 @@ def get_dealer_balance():
                 ''', (prev_month_start_date, prev_month_end_date))
                 for row in cursor.fetchall():
                     dealer_code = str(row[0])
+                    dealer_name = row[1]
+                    # Regular dealers use dealer_code as key
                     if dealer_code not in dealers_to_process:
                         dealers_to_process[dealer_code] = {
-                            'dealer_name': row[1],
+                            'dealer_code': dealer_code,
+                            'dealer_name': dealer_name,
                             'dealer_type': 'Active'
                         }
                 
-                # Get dealers from previous month unloading
+                # Get dealers from previous month unloading (regular dealers only)
                 cursor.execute('''
                     SELECT DISTINCT dealer_code, unloading_dealer
                     FROM vehicle_unloading
@@ -1821,9 +1824,12 @@ def get_dealer_balance():
                 ''', (prev_month_start_date, prev_month_end_date))
                 for row in cursor.fetchall():
                     dealer_code = str(row[0])
+                    dealer_name = row[1]
+                    # Regular dealers use dealer_code as key
                     if dealer_code not in dealers_to_process:
                         dealers_to_process[dealer_code] = {
-                            'dealer_name': row[1],
+                            'dealer_code': dealer_code,
+                            'dealer_name': dealer_name,
                             'dealer_type': 'Active'
                         }
                 
