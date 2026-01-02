@@ -2980,26 +2980,27 @@ def get_consolidated_vehicles():
                     last_day_prev_prev = monthrange(prev_prev_month_dt.year, prev_prev_month_dt.month)[1]
                     prev_prev_month_end = prev_prev_month_dt.replace(day=last_day_prev_prev).strftime('%Y-%m-%d')
                     
-                    # Get November billing
+                    # Get November billing (use < instead of <= to match UI's before_date logic)
+                    # This calculates transactions BEFORE the last day of November, not including it
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                         FROM sales_data
-                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                     ''', (truck, prev_prev_month_start, prev_prev_month_end))
                     nov_billed = cursor.fetchone()
                     
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                         FROM other_dealers_billing
-                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                     ''', (truck, prev_prev_month_start, prev_prev_month_end))
                     nov_other_billed = cursor.fetchone()
                     
-                    # Get November unloading
+                    # Get November unloading (use < instead of <= to match UI's before_date logic)
                     cursor.execute('''
                         SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                         FROM vehicle_unloading
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
                     ''', (truck, prev_prev_month_start, prev_prev_month_end))
                     nov_unloaded = cursor.fetchone()
                     
