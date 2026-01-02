@@ -2775,12 +2775,14 @@ def get_consolidated_vehicles():
                 closing_premium = opening_premium + (billed[1] or 0) + (other_billed[1] or 0) - (unloaded[1] or 0)
                 closing_opc = opening_opc + (billed[2] or 0) + (other_billed[2] or 0) - (unloaded[2] or 0)
                 
-                # Only add if there's pending material
-                if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
-                    # Cap negative values at 0
-                    closing_ppc = max(0, closing_ppc)
-                    closing_premium = max(0, closing_premium)
-                    closing_opc = max(0, closing_opc)
+                # Cap negative values at 0 first
+                closing_ppc = max(0, closing_ppc)
+                closing_premium = max(0, closing_premium)
+                closing_opc = max(0, closing_opc)
+                
+                # Only add if there's pending material (total > 0)
+                total_closing = closing_ppc + closing_premium + closing_opc
+                if total_closing > 0.01:
                     opening_balance_map[truck] = {
                         'billing_date': 'Previous Month',
                         'dealer_code': row[2],
