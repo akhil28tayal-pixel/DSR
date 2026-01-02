@@ -2862,37 +2862,35 @@ def get_consolidated_vehicles():
                     ''', (truck, prev_month_start, prev_month_end))
                     dec_unloaded = cursor.fetchone()
                     
-                    # Calculate December closing = December opening + December billing - December unloading
-                    dec_closing_ppc = max(0, dec_opening_ppc + (dec_billed[0] or 0) + (dec_other_billed[0] or 0) - (dec_unloaded[0] or 0))
-                    dec_closing_premium = max(0, dec_opening_premium + (dec_billed[1] or 0) + (dec_other_billed[1] or 0) - (dec_unloaded[1] or 0))
-                    dec_closing_opc = max(0, dec_opening_opc + (dec_billed[2] or 0) + (dec_other_billed[2] or 0) - (dec_unloaded[2] or 0))
-                    
-                    total_dec_closing = dec_closing_ppc + dec_closing_premium + dec_closing_opc
-                    # Save if there's closing balance (regardless of December activity)
-                    # If Nov closing exists, it should carry forward to Dec even with no Dec activity
-                    if total_dec_closing > 0.01:
-                        vehicles_to_save.append((truck, dealer_code, dec_closing_ppc, dec_closing_premium, dec_closing_opc))
+                    # We need to save NOVEMBER CLOSING (not December closing) for December to use
+                    # The entry with month_year='2025-12' should contain November closing
+                    total_nov_closing = nov_closing_ppc + nov_closing_premium + nov_closing_opc
+                    # Save if there's November closing balance
+                    if total_nov_closing > 0.01:
+                        vehicles_to_save.append((truck, dealer_code, nov_closing_ppc, nov_closing_premium, nov_closing_opc))
                         opening_balance_map[truck] = {
                             'billing_date': 'Previous Month',
                             'dealer_code': dealer_code,
-                            'ppc': dec_closing_ppc,
-                            'premium': dec_closing_premium,
-                            'opc': dec_closing_opc,
-                            'total': total_dec_closing
+                            'ppc': nov_closing_ppc,
+                            'premium': nov_closing_premium,
+                            'opc': nov_closing_opc,
+                            'total': total_nov_closing
                         }
                         if truck in truck_numbers_today:
                             if truck not in previous_billings:
                                 previous_billings[truck] = []
                             previous_billings[truck].append({
                                 'sale_date': 'Opening',
-                                'ppc': dec_closing_ppc,
-                                'premium': dec_closing_premium,
-                                'opc': dec_closing_opc,
-                                'total': total_dec_closing,
+                                'ppc': nov_closing_ppc,
+                                'premium': nov_closing_premium,
+                                'opc': nov_closing_opc,
+                                'total': total_nov_closing,
                                 'dealers': 'Opening Balance'
                             })
                 
                 # Save to pending_vehicle_unloading for future use
+                # IMPORTANT: We're saving NOVEMBER CLOSING with billing_date = Nov 30
+                # This will be used as DECEMBER OPENING
                 if vehicles_to_save:
                     print(f"INFO: Saving {len(vehicles_to_save)} vehicles to pending_vehicle_unloading for {prev_month_year}")
                     for truck, dealer_code, ppc, premium, opc in vehicles_to_save:
@@ -2900,7 +2898,7 @@ def get_consolidated_vehicles():
                             INSERT INTO pending_vehicle_unloading 
                             (month_year, vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''', (prev_month_year, truck, prev_month_end, dealer_code, ppc, premium, opc))
+                        ''', (prev_month_year, truck, prev_prev_month_end, dealer_code, ppc, premium, opc))
                     db.conn.commit()
                     print(f"INFO: Successfully saved {len(vehicles_to_save)} vehicles for {prev_month_year}")
         
