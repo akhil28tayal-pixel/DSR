@@ -2962,11 +2962,12 @@ def get_consolidated_vehicles():
                 vehicles_to_save = []
                 for truck in vehicles_to_process:
                     # Get October closing (stored in Nov entry) - this is the opening for November
+                    # truck can be either full vehicle_number or just truck_number (last 4 digits)
                     cursor.execute('''
                         SELECT ppc_qty, premium_qty, opc_qty, dealer_code
                         FROM pending_vehicle_unloading
-                        WHERE vehicle_number = ? AND month_year = ?
-                    ''', (truck, prev_prev_month_year))
+                        WHERE (vehicle_number = ? OR vehicle_number LIKE '%' || ?) AND month_year = ?
+                    ''', (truck, truck, prev_prev_month_year))
                     oct_closing_row = cursor.fetchone()
                     nov_opening_ppc = oct_closing_row[0] if oct_closing_row else 0
                     nov_opening_premium = oct_closing_row[1] if oct_closing_row else 0
