@@ -2718,46 +2718,62 @@ def get_consolidated_vehicles():
             last_day = monthrange(prev_month_dt.year, prev_month_dt.month)[1]
             prev_month_end = prev_month_dt.replace(day=last_day).strftime('%Y-%m-%d')
             
-            # Get previous month's pending vehicles
+            # Get the most recent pending_vehicle_unloading entries before the current month
+            # This handles cases where there are no entries for prev_month_year
             cursor.execute('''
-                SELECT vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
+                SELECT vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty, month_year
                 FROM pending_vehicle_unloading
-                WHERE month_year = ?
-            ''', (prev_month_year,))
+                WHERE month_year < ?
+                ORDER BY month_year DESC
+            ''', (month_year,))
             
+            # Group by vehicle to get only the most recent opening balance for each
+            vehicles_processed = set()
             for row in cursor.fetchall():
                 truck = row[0]
-                prev_opening_ppc = row[3] or 0
-                prev_opening_premium = row[4] or 0
-                prev_opening_opc = row[5] or 0
+                if truck in vehicles_processed:
+                    continue  # Skip older entries for this vehicle
+                vehicles_processed.add(truck)
                 
-                # Get ALL billing for this truck from previous month start through previous month end
+                opening_ppc = row[3] or 0
+                opening_premium = row[4] or 0
+                opening_opc = row[5] or 0
+                opening_month_year = row[6]
+                
+                # Calculate the start date for billing/unloading queries
+                # Start from the month AFTER the opening balance month
+                from dateutil.relativedelta import relativedelta
+                opening_dt = datetime.strptime(opening_month_year + '-01', '%Y-%m-%d')
+                calc_start_dt = opening_dt + relativedelta(months=1)
+                calc_start = calc_start_dt.strftime('%Y-%m-%d')
+                
+                # Get ALL billing for this truck from calc_start through prev_month_end
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM sales_data
                     WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
-                ''', (truck, prev_month_start, prev_month_end))
-                prev_billed = cursor.fetchone()
+                ''', (truck, calc_start, prev_month_end))
+                billed = cursor.fetchone()
                 
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM other_dealers_billing
                     WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
-                ''', (truck, prev_month_start, prev_month_end))
-                prev_other_billed = cursor.fetchone()
+                ''', (truck, calc_start, prev_month_end))
+                other_billed = cursor.fetchone()
                 
-                # Get ALL unloading for this truck from previous month start through previous month end
+                # Get ALL unloading for this truck from calc_start through prev_month_end
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                     FROM vehicle_unloading
                     WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck, prev_month_start, prev_month_end))
-                prev_unloaded = cursor.fetchone()
+                ''', (truck, calc_start, prev_month_end))
+                unloaded = cursor.fetchone()
                 
-                # Calculate closing balance: opening from Nov + billing in Dec - unloading in Dec
-                closing_ppc = prev_opening_ppc + (prev_billed[0] or 0) + (prev_other_billed[0] or 0) - (prev_unloaded[0] or 0)
-                closing_premium = prev_opening_premium + (prev_billed[1] or 0) + (prev_other_billed[1] or 0) - (prev_unloaded[1] or 0)
-                closing_opc = prev_opening_opc + (prev_billed[2] or 0) + (prev_other_billed[2] or 0) - (prev_unloaded[2] or 0)
+                # Calculate closing balance: opening + billing since opening month - unloading since opening month
+                closing_ppc = opening_ppc + (billed[0] or 0) + (other_billed[0] or 0) - (unloaded[0] or 0)
+                closing_premium = opening_premium + (billed[1] or 0) + (other_billed[1] or 0) - (unloaded[1] or 0)
+                closing_opc = opening_opc + (billed[2] or 0) + (other_billed[2] or 0) - (unloaded[2] or 0)
                 
                 # Only add if there's pending material
                 if closing_ppc > 0.01 or closing_premium > 0.01 or closing_opc > 0.01:
