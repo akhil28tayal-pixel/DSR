@@ -2829,14 +2829,10 @@ def get_consolidated_vehicles():
                     dec_closing_premium = max(0, dec_opening_premium + (dec_billed[1] or 0) + (dec_other_billed[1] or 0) - (dec_unloaded[1] or 0))
                     dec_closing_opc = max(0, dec_opening_opc + (dec_billed[2] or 0) + (dec_other_billed[2] or 0) - (dec_unloaded[2] or 0))
                     
-                    # Check if vehicle had activity in December
-                    total_dec_billed = (dec_billed[0] or 0) + (dec_billed[1] or 0) + (dec_billed[2] or 0) + (dec_other_billed[0] or 0) + (dec_other_billed[1] or 0) + (dec_other_billed[2] or 0)
-                    total_dec_unloaded = (dec_unloaded[0] or 0) + (dec_unloaded[1] or 0) + (dec_unloaded[2] or 0)
-                    had_dec_activity = total_dec_billed > 0.01 or total_dec_unloaded > 0.01
-                    
                     total_dec_closing = dec_closing_ppc + dec_closing_premium + dec_closing_opc
-                    # Only save if there's closing balance AND vehicle had activity in December
-                    if total_dec_closing > 0.01 and had_dec_activity:
+                    # Save if there's closing balance (regardless of December activity)
+                    # If Nov closing exists, it should carry forward to Dec even with no Dec activity
+                    if total_dec_closing > 0.01:
                         vehicles_to_save.append((truck, dealer_code, dec_closing_ppc, dec_closing_premium, dec_closing_opc))
                         opening_balance_map[truck] = {
                             'billing_date': 'Previous Month',
