@@ -2775,14 +2775,25 @@ def get_consolidated_vehicles():
                 closing_premium = opening_premium + (billed[1] or 0) + (other_billed[1] or 0) - (unloaded[1] or 0)
                 closing_opc = opening_opc + (billed[2] or 0) + (other_billed[2] or 0) - (unloaded[2] or 0)
                 
+                # DEBUG for Jan 1, 2026
+                if selected_date == '2026-01-01':
+                    print(f"DEBUG {truck}: opening={opening_ppc}/{opening_premium}/{opening_opc}, billed={billed[0]}/{billed[1]}/{billed[2]}, other_billed={other_billed[0]}/{other_billed[1]}/{other_billed[2]}, unloaded={unloaded[0]}/{unloaded[1]}/{unloaded[2]}, closing_raw={closing_ppc}/{closing_premium}/{closing_opc}")
+                
                 # Cap negative values at 0 first
                 closing_ppc = max(0, closing_ppc)
                 closing_premium = max(0, closing_premium)
                 closing_opc = max(0, closing_opc)
                 
-                # Only add if there's pending material (total > 0)
+                # Only add if there's pending material (total > 0) AND there was activity in the period
                 total_closing = closing_ppc + closing_premium + closing_opc
-                if total_closing > 0.01:
+                total_billed = (billed[0] or 0) + (billed[1] or 0) + (billed[2] or 0) + (other_billed[0] or 0) + (other_billed[1] or 0) + (other_billed[2] or 0)
+                total_unloaded = (unloaded[0] or 0) + (unloaded[1] or 0) + (unloaded[2] or 0)
+                had_activity = total_billed > 0.01 or total_unloaded > 0.01
+                
+                if selected_date == '2026-01-01':
+                    print(f"  After capping: {closing_ppc}/{closing_premium}/{closing_opc}, total={total_closing}, activity={had_activity}, will_add={total_closing > 0.01 and had_activity}")
+                
+                if total_closing > 0.01 and had_activity:
                     opening_balance_map[truck] = {
                         'billing_date': 'Previous Month',
                         'dealer_code': row[2],
