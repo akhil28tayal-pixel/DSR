@@ -2710,10 +2710,13 @@ def get_consolidated_vehicles():
         # If no current month pending vehicles, calculate from previous month's closing
         if not has_current_month_pending:
             from dateutil.relativedelta import relativedelta
+            from calendar import monthrange
             prev_month_dt = selected_dt - relativedelta(months=1)
             prev_month_year = prev_month_dt.strftime('%Y-%m')
             prev_month_start = prev_month_dt.replace(day=1).strftime('%Y-%m-%d')
-            prev_month_end = month_start  # First day of current month
+            # Get last day of previous month
+            last_day = monthrange(prev_month_dt.year, prev_month_dt.month)[1]
+            prev_month_end = prev_month_dt.replace(day=last_day).strftime('%Y-%m-%d')
             
             # Get previous month's pending vehicles
             cursor.execute('''
@@ -2732,14 +2735,14 @@ def get_consolidated_vehicles():
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
                 ''', (truck, prev_month_start, prev_month_end))
                 prev_billed = cursor.fetchone()
                 
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM other_dealers_billing
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
                 ''', (truck, prev_month_start, prev_month_end))
                 prev_other_billed = cursor.fetchone()
                 
@@ -2747,7 +2750,7 @@ def get_consolidated_vehicles():
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                     FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                 ''', (truck, prev_month_start, prev_month_end))
                 prev_unloaded = cursor.fetchone()
                 
@@ -2785,10 +2788,10 @@ def get_consolidated_vehicles():
             # Also check for vehicles billed in previous month (not in pending_vehicle_unloading)
             cursor.execute('''
                 SELECT DISTINCT truck_number FROM sales_data
-                WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
+                WHERE sale_date >= ? AND sale_date <= ? AND truck_number IS NOT NULL AND truck_number != ''
                 UNION
                 SELECT DISTINCT truck_number FROM other_dealers_billing
-                WHERE sale_date >= ? AND sale_date < ? AND truck_number IS NOT NULL AND truck_number != ''
+                WHERE sale_date >= ? AND sale_date <= ? AND truck_number IS NOT NULL AND truck_number != ''
             ''', (prev_month_start, prev_month_end, prev_month_start, prev_month_end))
             
             for (truck,) in cursor.fetchall():
@@ -2800,7 +2803,7 @@ def get_consolidated_vehicles():
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0),
                            (SELECT dealer_code FROM sales_data WHERE truck_number = ? ORDER BY sale_date DESC LIMIT 1)
                     FROM sales_data
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
                 ''', (truck, truck, prev_month_start, prev_month_end))
                 prev_billed = cursor.fetchone()
                 dealer_code = prev_billed[3] if prev_billed else None
@@ -2808,7 +2811,7 @@ def get_consolidated_vehicles():
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
                     FROM other_dealers_billing
-                    WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
                 ''', (truck, prev_month_start, prev_month_end))
                 prev_other_billed = cursor.fetchone()
                 
@@ -2816,7 +2819,7 @@ def get_consolidated_vehicles():
                 cursor.execute('''
                     SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                     FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date < ?
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                 ''', (truck, prev_month_start, prev_month_end))
                 prev_unloaded = cursor.fetchone()
                 
