@@ -2781,22 +2781,60 @@ def get_consolidated_vehicles():
                         vehicles_to_process.append(row[0])
                 
                 # Calculate closing balance for each vehicle
-                # Note: pending_vehicle_unloading stores CLOSING balances, not opening
-                # So prev_prev_month_year entry is November CLOSING, which becomes December OPENING
+                # IMPORTANT: pending_vehicle_unloading stores CLOSING balances
+                # Entry with month_year='2025-11' contains OCTOBER 31 closing (manually added as Nov opening)
+                # We need to calculate NOVEMBER closing first, then use it as DECEMBER opening
                 vehicles_to_save = []
                 for truck in vehicles_to_process:
-                    # Get November closing (which becomes December opening)
-                    # The entry with month_year='2025-11' contains November's CLOSING balance
+                    # Get October closing (stored in Nov entry) - this is the opening for November
                     cursor.execute('''
                         SELECT ppc_qty, premium_qty, opc_qty, dealer_code
                         FROM pending_vehicle_unloading
                         WHERE vehicle_number = ? AND month_year = ?
                     ''', (truck, prev_prev_month_year))
-                    nov_closing_row = cursor.fetchone()
-                    dec_opening_ppc = nov_closing_row[0] if nov_closing_row else 0
-                    dec_opening_premium = nov_closing_row[1] if nov_closing_row else 0
-                    dec_opening_opc = nov_closing_row[2] if nov_closing_row else 0
-                    dealer_code = nov_closing_row[3] if nov_closing_row else None
+                    oct_closing_row = cursor.fetchone()
+                    nov_opening_ppc = oct_closing_row[0] if oct_closing_row else 0
+                    nov_opening_premium = oct_closing_row[1] if oct_closing_row else 0
+                    nov_opening_opc = oct_closing_row[2] if oct_closing_row else 0
+                    dealer_code = oct_closing_row[3] if oct_closing_row else None
+                    
+                    # Calculate November closing = October closing + November billing - November unloading
+                    prev_prev_month_start = prev_prev_month_dt.replace(day=1).strftime('%Y-%m-%d')
+                    last_day_prev_prev = monthrange(prev_prev_month_dt.year, prev_prev_month_dt.month)[1]
+                    prev_prev_month_end = prev_prev_month_dt.replace(day=last_day_prev_prev).strftime('%Y-%m-%d')
+                    
+                    # Get November billing
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                    ''', (truck, prev_prev_month_start, prev_prev_month_end))
+                    nov_billed = cursor.fetchone()
+                    
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM other_dealers_billing
+                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
+                    ''', (truck, prev_prev_month_start, prev_prev_month_end))
+                    nov_other_billed = cursor.fetchone()
+                    
+                    # Get November unloading
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                    ''', (truck, prev_prev_month_start, prev_prev_month_end))
+                    nov_unloaded = cursor.fetchone()
+                    
+                    # November closing = November opening + November billing - November unloading
+                    nov_closing_ppc = max(0, nov_opening_ppc + (nov_billed[0] or 0) + (nov_other_billed[0] or 0) - (nov_unloaded[0] or 0))
+                    nov_closing_premium = max(0, nov_opening_premium + (nov_billed[1] or 0) + (nov_other_billed[1] or 0) - (nov_unloaded[1] or 0))
+                    nov_closing_opc = max(0, nov_opening_opc + (nov_billed[2] or 0) + (nov_other_billed[2] or 0) - (nov_unloaded[2] or 0))
+                    
+                    # Now use November closing as December opening
+                    dec_opening_ppc = nov_closing_ppc
+                    dec_opening_premium = nov_closing_premium
+                    dec_opening_opc = nov_closing_opc
                     
                     # Get December billing
                     cursor.execute('''
