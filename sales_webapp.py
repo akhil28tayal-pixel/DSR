@@ -1732,16 +1732,20 @@ def get_dealer_balance():
         except:
             pass
         
-        # 1b. If no opening balance for current month, also get dealers from previous month
-        # (they may have closing balance that carries forward)
+        # 1b. If no opening balance for current month, check if previous month has entries
+        # If not, auto-calculate and save previous month's closing balances
         if not has_current_month_opening:
-            try:
-                cursor.execute('''
-                    SELECT dealer_code, dealer_name, dealer_type
-                    FROM opening_material_balance
-                    WHERE month_year = ?
-                ''', (prev_month_year,))
-                for row in cursor.fetchall():
+            # Check if previous month has opening_material_balance entries
+            cursor.execute('''
+                SELECT dealer_code, dealer_name, dealer_type
+                FROM opening_material_balance
+                WHERE month_year = ?
+            ''', (prev_month_year,))
+            prev_month_entries = cursor.fetchall()
+            
+            if prev_month_entries:
+                # Use previous month's entries directly
+                for row in prev_month_entries:
                     dealer_code = str(row[0])
                     is_other = row[2] == 'Other'
                     dealer_name = row[1] or f'Dealer {dealer_code}'
@@ -1754,8 +1758,128 @@ def get_dealer_balance():
                             'dealer_name': dealer_name,
                             'is_other': is_other
                         }
-            except:
-                pass
+            else:
+                # No previous month entries - need to calculate and save them
+                print(f"INFO: No {prev_month_year} dealer entries found. Calculating and saving closing balances...")
+                
+                from dateutil.relativedelta import relativedelta
+                from calendar import monthrange
+                
+                # Get previous month dates
+                prev_month_dt = datetime.strptime(month_start, '%Y-%m-%d') - relativedelta(months=1)
+                prev_prev_month_dt = prev_month_dt - relativedelta(months=1)
+                prev_prev_month_year = prev_prev_month_dt.strftime('%Y-%m')
+                prev_month_start_date = prev_month_dt.replace(day=1).strftime('%Y-%m-%d')
+                last_day = monthrange(prev_month_dt.year, prev_month_dt.month)[1]
+                prev_month_end_date = prev_month_dt.replace(day=last_day).strftime('%Y-%m-%d')
+                
+                # Get all dealers that had transactions in previous month OR had opening balance
+                dealers_to_process = {}
+                
+                # Get dealers from month before previous month's opening
+                cursor.execute('''
+                    SELECT dealer_code, dealer_name, dealer_type
+                    FROM opening_material_balance
+                    WHERE month_year = ?
+                ''', (prev_prev_month_year,))
+                for row in cursor.fetchall():
+                    dealer_code = str(row[0])
+                    dealers_to_process[dealer_code] = {
+                        'dealer_name': row[1],
+                        'dealer_type': row[2]
+                    }
+                
+                # Get dealers from previous month sales
+                cursor.execute('''
+                    SELECT DISTINCT dealer_code, dealer_name
+                    FROM sales_data
+                    WHERE sale_date >= ? AND sale_date <= ?
+                ''', (prev_month_start_date, prev_month_end_date))
+                for row in cursor.fetchall():
+                    dealer_code = str(row[0])
+                    if dealer_code not in dealers_to_process:
+                        dealers_to_process[dealer_code] = {
+                            'dealer_name': row[1],
+                            'dealer_type': 'Active'
+                        }
+                
+                # Get dealers from previous month unloading
+                cursor.execute('''
+                    SELECT DISTINCT dealer_code, unloading_dealer
+                    FROM vehicle_unloading
+                    WHERE unloading_date >= ? AND unloading_date <= ?
+                    AND is_other_dealer = 0
+                ''', (prev_month_start_date, prev_month_end_date))
+                for row in cursor.fetchall():
+                    dealer_code = str(row[0])
+                    if dealer_code not in dealers_to_process:
+                        dealers_to_process[dealer_code] = {
+                            'dealer_name': row[1],
+                            'dealer_type': 'Active'
+                        }
+                
+                # Calculate closing balance for each dealer
+                dealers_to_save = []
+                for dealer_code, dealer_info in dealers_to_process.items():
+                    # Get opening from month before previous month
+                    cursor.execute('''
+                        SELECT ppc_qty, premium_qty, opc_qty
+                        FROM opening_material_balance
+                        WHERE month_year = ? AND dealer_code = ?
+                    ''', (prev_prev_month_year, dealer_code))
+                    opening_row = cursor.fetchone()
+                    opening_ppc = opening_row[0] if opening_row else 0
+                    opening_premium = opening_row[1] if opening_row else 0
+                    opening_opc = opening_row[2] if opening_row else 0
+                    
+                    # Get previous month's billing
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                        FROM sales_data
+                        WHERE dealer_code = ? AND sale_date >= ? AND sale_date <= ?
+                    ''', (dealer_code, prev_month_start_date, prev_month_end_date))
+                    billed = cursor.fetchone()
+                    
+                    # Get previous month's unloading
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                        FROM vehicle_unloading
+                        WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date <= ?
+                    ''', (dealer_code, prev_month_start_date, prev_month_end_date))
+                    unloaded = cursor.fetchone()
+                    
+                    # Calculate closing
+                    closing_ppc = max(0, opening_ppc + (billed[0] or 0) - (unloaded[0] or 0))
+                    closing_premium = max(0, opening_premium + (billed[1] or 0) - (unloaded[1] or 0))
+                    closing_opc = max(0, opening_opc + (billed[2] or 0) - (unloaded[2] or 0))
+                    
+                    total_closing = closing_ppc + closing_premium + closing_opc
+                    if total_closing > 0.01:
+                        dealers_to_save.append((
+                            dealer_code,
+                            dealer_info['dealer_name'],
+                            dealer_info['dealer_type'],
+                            closing_ppc,
+                            closing_premium,
+                            closing_opc
+                        ))
+                        # Add to all_dealers for current processing
+                        all_dealers[dealer_code] = {
+                            'dealer_name': dealer_info['dealer_name'],
+                            'is_other': False
+                        }
+                
+                # Save to opening_material_balance
+                if dealers_to_save:
+                    print(f"INFO: Saving {len(dealers_to_save)} dealers to opening_material_balance for {prev_month_year}")
+                    for dealer_code, dealer_name, dealer_type, ppc, premium, opc in dealers_to_save:
+                        cursor.execute('''
+                            INSERT INTO opening_material_balance
+                            (month_year, dealer_code, dealer_name, dealer_type, ppc_qty, premium_qty, opc_qty)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (prev_month_year, dealer_code, dealer_name, dealer_type, ppc, premium, opc))
+                    db.conn.commit()
+                    print(f"INFO: Successfully saved {len(dealers_to_save)} dealers for {prev_month_year}")
             
             # Also get dealers who had activity in previous month (sales or unloading)
             try:
