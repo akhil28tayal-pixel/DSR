@@ -1774,6 +1774,7 @@ def get_dealer_balance():
                 prev_month_end_date = prev_month_dt.replace(day=last_day).strftime('%Y-%m-%d')
                 
                 # Get all dealers that had transactions in previous month OR had opening balance
+                # Use dealer_name as key for "Other" type dealers, dealer_code for regular dealers
                 dealers_to_process = {}
                 
                 # Get dealers from month before previous month's opening
@@ -1784,9 +1785,17 @@ def get_dealer_balance():
                 ''', (prev_prev_month_year,))
                 for row in cursor.fetchall():
                     dealer_code = str(row[0])
-                    dealers_to_process[dealer_code] = {
-                        'dealer_name': row[1],
-                        'dealer_type': row[2]
+                    dealer_name = row[1]
+                    dealer_type = row[2]
+                    # For "Other" type dealers, use dealer_name as key
+                    if dealer_type == 'Other':
+                        dealer_key = dealer_name
+                    else:
+                        dealer_key = dealer_code
+                    dealers_to_process[dealer_key] = {
+                        'dealer_code': dealer_code,
+                        'dealer_name': dealer_name,
+                        'dealer_type': dealer_type
                     }
                 
                 # Get dealers from previous month sales
@@ -1829,54 +1838,80 @@ def get_dealer_balance():
                 last_day_prev_prev = monthrange(prev_prev_month_dt.year, prev_prev_month_dt.month)[1]
                 prev_prev_month_end = prev_prev_month_dt.replace(day=last_day_prev_prev).strftime('%Y-%m-%d')
                 
-                for dealer_code, dealer_info in dealers_to_process.items():
+                for dealer_key, dealer_info in dealers_to_process.items():
+                    dealer_code = dealer_info['dealer_code']
+                    dealer_name = dealer_info['dealer_name']
+                    dealer_type = dealer_info['dealer_type']
+                    is_other = dealer_type == 'Other'
+                    
                     # Get October closing (stored in Nov entry) - this is November opening
-                    cursor.execute('''
-                        SELECT ppc_qty, premium_qty, opc_qty
-                        FROM opening_material_balance
-                        WHERE month_year = ? AND dealer_code = ?
-                    ''', (prev_prev_month_year, dealer_code))
+                    if is_other:
+                        cursor.execute('''
+                            SELECT ppc_qty, premium_qty, opc_qty
+                            FROM opening_material_balance
+                            WHERE month_year = ? AND dealer_name = ? AND dealer_type = 'Other'
+                        ''', (prev_prev_month_year, dealer_name))
+                    else:
+                        cursor.execute('''
+                            SELECT ppc_qty, premium_qty, opc_qty
+                            FROM opening_material_balance
+                            WHERE month_year = ? AND dealer_code = ?
+                        ''', (prev_prev_month_year, dealer_code))
                     oct_closing_row = cursor.fetchone()
                     nov_opening_ppc = oct_closing_row[0] if oct_closing_row else 0
                     nov_opening_premium = oct_closing_row[1] if oct_closing_row else 0
                     nov_opening_opc = oct_closing_row[2] if oct_closing_row else 0
                     
                     # Get November billing
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
-                        FROM sales_data
-                        WHERE dealer_code = ? AND sale_date >= ? AND sale_date <= ?
-                    ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
+                    if is_other:
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                            FROM other_dealers_billing
+                            WHERE dealer_name = ? AND sale_date >= ? AND sale_date <= ?
+                        ''', (dealer_name, prev_prev_month_start, prev_prev_month_end))
+                    else:
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
+                            FROM sales_data
+                            WHERE dealer_code = ? AND sale_date >= ? AND sale_date <= ?
+                        ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
                     nov_billed = cursor.fetchone()
                     
                     # Get November unloading
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading
-                        WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date <= ?
-                    ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
+                    if is_other:
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE unloading_dealer = ? AND is_other_dealer = 1 AND unloading_date >= ? AND unloading_date <= ?
+                        ''', (dealer_name, prev_prev_month_start, prev_prev_month_end))
+                    else:
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE dealer_code = ? AND unloading_date >= ? AND unloading_date <= ?
+                        ''', (dealer_code, prev_prev_month_start, prev_prev_month_end))
                     nov_unloaded = cursor.fetchone()
                     
                     # Calculate November closing = October closing + November billing - November unloading
-                    nov_closing_ppc = max(0, nov_opening_ppc + (nov_billed[0] or 0) - (nov_unloaded[0] or 0))
-                    nov_closing_premium = max(0, nov_opening_premium + (nov_billed[1] or 0) - (nov_unloaded[1] or 0))
-                    nov_closing_opc = max(0, nov_opening_opc + (nov_billed[2] or 0) - (nov_unloaded[2] or 0))
+                    nov_closing_ppc = nov_opening_ppc + (nov_billed[0] or 0) - (nov_unloaded[0] or 0)
+                    nov_closing_premium = nov_opening_premium + (nov_billed[1] or 0) - (nov_unloaded[1] or 0)
+                    nov_closing_opc = nov_opening_opc + (nov_billed[2] or 0) - (nov_unloaded[2] or 0)
                     
-                    # Save PREVIOUS MONTH's closing (November closing) for current month (December) to use
+                    # Save PREVIOUS MONTH's closing (November closing) - allow negative balances for inactive/other dealers
                     total_nov_closing = nov_closing_ppc + nov_closing_premium + nov_closing_opc
-                    if total_nov_closing > 0.01:
+                    if abs(total_nov_closing) > 0.01:  # Save if non-zero (positive or negative)
                         dealers_to_save.append((
                             dealer_code,
-                            dealer_info['dealer_name'],
-                            dealer_info['dealer_type'],
+                            dealer_name,
+                            dealer_type,
                             nov_closing_ppc,
                             nov_closing_premium,
                             nov_closing_opc
                         ))
                         # Add to all_dealers for current processing
-                        all_dealers[dealer_code] = {
-                            'dealer_name': dealer_info['dealer_name'],
-                            'is_other': False
+                        all_dealers[dealer_key] = {
+                            'dealer_name': dealer_name,
+                            'is_other': is_other
                         }
                 
                 # Save to opening_material_balance
