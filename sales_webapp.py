@@ -2567,15 +2567,10 @@ def get_dealer_balance():
                     'is_manual': False
                 })
         
-        # Add vehicles from opening_balance_vehicles that were NOT billed in current month
-        # These are vehicles with pending from previous day that haven't been re-billed
-        # Track which trucks were billed in current month
-        trucks_billed_in_month = set(row[0] for row in billing_data)
-        
+        # Add vehicles from opening_balance_vehicles (previous day pending)
+        # These will show as separate entries even if the vehicle was also billed today
+        # This allows vehicles like HR58C8562 to show twice: once for Dec 31 pending, once for Jan 1 billing
         for truck, opening_bal in opening_balance_vehicles.items():
-            # Skip if this truck was billed in current month (already processed above)
-            if truck in trucks_billed_in_month:
-                continue  # Already processed as part of current month billing
             
             # Get unloading for this truck
             unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
