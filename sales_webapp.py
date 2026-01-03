@@ -1833,6 +1833,22 @@ def get_dealer_balance():
                             'dealer_type': 'Active'
                         }
                 
+                # Get "Other" dealers from previous month unloading
+                cursor.execute('''
+                    SELECT DISTINCT unloading_dealer
+                    FROM vehicle_unloading
+                    WHERE unloading_date >= ? AND unloading_date <= ?
+                    AND is_other_dealer = 1
+                ''', (prev_month_start_date, prev_month_end_date))
+                for row in cursor.fetchall():
+                    dealer_name = row[0]
+                    if dealer_name not in dealers_to_process:
+                        dealers_to_process[dealer_name] = {
+                            'dealer_code': '1',
+                            'dealer_name': dealer_name,
+                            'dealer_type': 'Other'
+                        }
+                
                 # Calculate closing balance for each dealer
                 # IMPORTANT: opening_material_balance stores CLOSING balances
                 # Entry with month_year='2025-11' contains OCTOBER 31 closing (manually added as Nov opening)
