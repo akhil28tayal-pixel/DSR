@@ -30,14 +30,15 @@ def build_daily_map():
     print(f"Processing {len(dates)} dates from {dates[0]} to {dates[-1]}")
     
     # Initialize Nov 1 opening balances from pending_vehicle_unloading
-    print("Initializing Nov 1, 2025 opening balances...")
+    # Store in memory first, will be used as "previous day" for Nov 1 processing
+    print("Loading Nov 1, 2025 opening balances...")
     cursor.execute("""
         SELECT vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
         FROM pending_vehicle_unloading
         WHERE month_year = '2025-11'
     """)
     
-    nov1_count = 0
+    nov1_opening = {}
     for row in cursor.fetchall():
         vehicle_number = row[0]
         billing_date = row[1] or '2025-10-31'
@@ -46,40 +47,45 @@ def build_daily_map():
         premium_qty = row[4] or 0
         opc_qty = row[5] or 0
         
-        # Only insert if there's a positive balance
+        # Only include if there's a positive balance
         if ppc_qty + premium_qty + opc_qty > 0.01:
-            cursor.execute("""
-                INSERT OR REPLACE INTO daily_vehicle_pending
-                (date, vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, ('2025-11-01', vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, billing_date))
-            nov1_count += 1
+            nov1_opening[vehicle_number] = {
+                'ppc': ppc_qty,
+                'premium': premium_qty,
+                'opc': opc_qty,
+                'dealer_code': dealer_code,
+                'last_billing_date': billing_date
+            }
     
-    conn.commit()
-    print(f"Initialized {nov1_count} vehicles for Nov 1, 2025")
+    print(f"Loaded {len(nov1_opening)} vehicles with Nov 1 opening balances")
     
     # Process each date
     for date in dates:
         
         # Get previous date's balances
-        cursor.execute("""
-            SELECT vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date
-            FROM daily_vehicle_pending
-            WHERE date = (
-                SELECT MAX(date) FROM daily_vehicle_pending WHERE date < ?
-            )
-        """, (date,))
-        
-        prev_balances = {}
-        for row in cursor.fetchall():
-            vehicle = row[0]
-            prev_balances[vehicle] = {
-                'ppc': row[1],
-                'premium': row[2],
-                'opc': row[3],
-                'dealer_code': row[4],
-                'last_billing_date': row[5]
-            }
+        if date == '2025-11-01':
+            # For Nov 1, use the opening balances loaded from pending_vehicle_unloading
+            prev_balances = nov1_opening
+        else:
+            # For other dates, query from daily_vehicle_pending
+            cursor.execute("""
+                SELECT vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date
+                FROM daily_vehicle_pending
+                WHERE date = (
+                    SELECT MAX(date) FROM daily_vehicle_pending WHERE date < ?
+                )
+            """, (date,))
+            
+            prev_balances = {}
+            for row in cursor.fetchall():
+                vehicle = row[0]
+                prev_balances[vehicle] = {
+                    'ppc': row[1],
+                    'premium': row[2],
+                    'opc': row[3],
+                    'dealer_code': row[4],
+                    'last_billing_date': row[5]
+                }
         
         # Get today's billing (sales_data)
         cursor.execute("""
