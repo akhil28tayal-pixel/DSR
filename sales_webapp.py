@@ -2864,32 +2864,36 @@ def get_consolidated_vehicles():
         truck_numbers_today = list(set([row[0] for row in invoices_data]))
         previous_billings = {}
         
-        # First, get opening balance vehicles for this month
+        # Get opening balance vehicles from daily_vehicle_pending for the selected date
+        # Use the previous day's closing as today's opening
+        from datetime import timedelta
+        prev_date = (selected_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+        
         opening_balance_map = {}
-        has_current_month_pending = False
         cursor.execute('''
-            SELECT vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
-            FROM pending_vehicle_unloading
-            WHERE month_year = ?
-        ''', (month_year,))
+            SELECT vehicle_number, last_billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
+            FROM daily_vehicle_pending
+            WHERE date = ?
+        ''', (prev_date,))
         rows = cursor.fetchall()
-        if rows:
-            has_current_month_pending = True
         for row in rows:
             truck = row[0]
-            opening_balance_map[truck] = {
-                'billing_date': row[1] or 'Previous Month',
+            # Extract just the truck number (last 4 digits) for matching
+            truck_short = truck[-4:] if len(truck) > 4 else truck
+            opening_balance_map[truck_short] = {
+                'billing_date': row[1] or 'Previous Day',
                 'dealer_code': row[2],
                 'ppc': row[3] or 0,
                 'premium': row[4] or 0,
                 'opc': row[5] or 0,
-                'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0)
+                'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0),
+                'full_vehicle_number': truck
             }
             # Add opening balance to previous_billings for trucks billed today
-            if truck in truck_numbers_today:
-                if truck not in previous_billings:
-                    previous_billings[truck] = []
-                previous_billings[truck].append({
+            if truck_short in truck_numbers_today:
+                if truck_short not in previous_billings:
+                    previous_billings[truck_short] = []
+                previous_billings[truck_short].append({
                     'sale_date': row[1] or 'Opening',
                     'ppc': row[3] or 0,
                     'premium': row[4] or 0,
@@ -2898,169 +2902,32 @@ def get_consolidated_vehicles():
                     'dealers': 'Opening Balance'
                 })
         
-        # If no current month pending vehicles, calculate from previous month's closing
-        if not has_current_month_pending:
-            from dateutil.relativedelta import relativedelta
-            from calendar import monthrange
-            prev_month_dt = selected_dt - relativedelta(months=1)
-            prev_month_year = prev_month_dt.strftime('%Y-%m')
-            prev_month_start = prev_month_dt.replace(day=1).strftime('%Y-%m-%d')
-            # Get last day of previous month
-            last_day = monthrange(prev_month_dt.year, prev_month_dt.month)[1]
-            prev_month_end = prev_month_dt.replace(day=last_day).strftime('%Y-%m-%d')
-            
-            # Check if previous month has entries in pending_vehicle_unloading
+        # If no vehicles found in daily map for previous day, this might be the first day
+        # or the daily map needs to be rebuilt
+        if not opening_balance_map:
+            print(f"WARNING: No vehicles found in daily_vehicle_pending for {prev_date}. Daily map may need to be rebuilt.")
+            # Fallback: try to get from the selected date itself (for vehicles billed today)
             cursor.execute('''
-                SELECT vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
-                FROM pending_vehicle_unloading
-                WHERE month_year = ?
-            ''', (prev_month_year,))
-            prev_month_entries = cursor.fetchall()
-            
-            if prev_month_entries:
-                # Use previous month's closing as current month's opening
-                for row in prev_month_entries:
-                    truck = row[0]
-                    opening_balance_map[truck] = {
-                        'billing_date': 'Previous Month',
+                SELECT vehicle_number, last_billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
+                FROM daily_vehicle_pending
+                WHERE date = ?
+            ''', (selected_date,))
+            rows = cursor.fetchall()
+            for row in rows:
+                truck = row[0]
+                truck_short = truck[-4:] if len(truck) > 4 else truck
+                if truck_short not in opening_balance_map:
+                    opening_balance_map[truck_short] = {
+                        'billing_date': row[1] or 'Same Day',
                         'dealer_code': row[2],
                         'ppc': row[3] or 0,
                         'premium': row[4] or 0,
                         'opc': row[5] or 0,
-                        'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0)
+                        'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0),
+                        'full_vehicle_number': truck
                     }
-                    if truck in truck_numbers_today:
-                        if truck not in previous_billings:
-                            previous_billings[truck] = []
-                        previous_billings[truck].append({
-                            'sale_date': 'Opening',
-                            'ppc': row[3] or 0,
-                            'premium': row[4] or 0,
-                            'opc': row[5] or 0,
-                            'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0),
-                            'dealers': 'Opening Balance'
-                        })
-            else:
-                # No previous month entries - need to calculate and save them
-                # This happens when viewing a new month for the first time
-                # Calculate previous month's closing balance for all vehicles
-                print(f"INFO: No {prev_month_year} entries found. Calculating and saving closing balances...")
-                
-                # Get all vehicles that had transactions in previous month
-                cursor.execute('''
-                    SELECT DISTINCT truck_number FROM sales_data
-                    WHERE sale_date >= ? AND sale_date <= ?
-                    UNION
-                    SELECT DISTINCT truck_number FROM other_dealers_billing
-                    WHERE sale_date >= ? AND sale_date <= ?
-                    UNION
-                    SELECT DISTINCT truck_number FROM vehicle_unloading
-                    WHERE unloading_date >= ? AND unloading_date <= ?
-                ''', (prev_month_start, prev_month_end, prev_month_start, prev_month_end, prev_month_start, prev_month_end))
-                
-                vehicles_to_process = [row[0] for row in cursor.fetchall()]
-                
-                # Also get vehicles from the month before previous month's pending
-                prev_prev_month_dt = prev_month_dt - relativedelta(months=1)
-                prev_prev_month_year = prev_prev_month_dt.strftime('%Y-%m')
-                cursor.execute('''
-                    SELECT DISTINCT vehicle_number FROM pending_vehicle_unloading
-                    WHERE month_year = ?
-                ''', (prev_prev_month_year,))
-                for row in cursor.fetchall():
-                    if row[0] not in vehicles_to_process:
-                        vehicles_to_process.append(row[0])
-                
-                # Calculate closing balance for each vehicle
-                # IMPORTANT: pending_vehicle_unloading stores CLOSING balances
-                # Entry with month_year='2025-11' contains OCTOBER 31 closing (manually added as Nov opening)
-                # We need to calculate NOVEMBER closing first, then use it as DECEMBER opening
-                vehicles_to_save = []
-                for truck in vehicles_to_process:
-                    # Get October closing (stored in Nov entry) - this is the opening for November
-                    # truck can be either full vehicle_number or just truck_number (last 4 digits)
-                    cursor.execute('''
-                        SELECT ppc_qty, premium_qty, opc_qty, dealer_code
-                        FROM pending_vehicle_unloading
-                        WHERE (vehicle_number = ? OR vehicle_number LIKE '%' || ?) AND month_year = ?
-                    ''', (truck, truck, prev_prev_month_year))
-                    oct_closing_row = cursor.fetchone()
-                    nov_opening_ppc = oct_closing_row[0] if oct_closing_row else 0
-                    nov_opening_premium = oct_closing_row[1] if oct_closing_row else 0
-                    nov_opening_opc = oct_closing_row[2] if oct_closing_row else 0
-                    dealer_code = oct_closing_row[3] if oct_closing_row else None
-                    
-                    # Calculate November closing = October closing + November billing - November unloading
-                    prev_prev_month_start = prev_prev_month_dt.replace(day=1).strftime('%Y-%m-%d')
-                    last_day_prev_prev = monthrange(prev_prev_month_dt.year, prev_prev_month_dt.month)[1]
-                    prev_prev_month_end = prev_prev_month_dt.replace(day=last_day_prev_prev).strftime('%Y-%m-%d')
-                    
-                    # Get November billing (all November transactions)
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
-                        FROM sales_data
-                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
-                    ''', (truck, prev_prev_month_start, prev_prev_month_end))
-                    nov_billed = cursor.fetchone()
-                    
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), COALESCE(SUM(opc_quantity), 0)
-                        FROM other_dealers_billing
-                        WHERE truck_number = ? AND sale_date >= ? AND sale_date <= ?
-                    ''', (truck, prev_prev_month_start, prev_prev_month_end))
-                    nov_other_billed = cursor.fetchone()
-                    
-                    # Get November unloading (all November transactions)
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
-                        FROM vehicle_unloading
-                        WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                    ''', (truck, prev_prev_month_start, prev_prev_month_end))
-                    nov_unloaded = cursor.fetchone()
-                    
-                    # November closing = November opening + November billing - November unloading
-                    nov_closing_ppc = max(0, nov_opening_ppc + (nov_billed[0] or 0) + (nov_other_billed[0] or 0) - (nov_unloaded[0] or 0))
-                    nov_closing_premium = max(0, nov_opening_premium + (nov_billed[1] or 0) + (nov_other_billed[1] or 0) - (nov_unloaded[1] or 0))
-                    nov_closing_opc = max(0, nov_opening_opc + (nov_billed[2] or 0) + (nov_other_billed[2] or 0) - (nov_unloaded[2] or 0))
-                    
-                    # Save PREVIOUS MONTH's closing (November closing) for current month (December) to use
-                    total_nov_closing = nov_closing_ppc + nov_closing_premium + nov_closing_opc
-                    if total_nov_closing > 0.01:
-                        vehicles_to_save.append((truck, dealer_code, nov_closing_ppc, nov_closing_premium, nov_closing_opc))
-                        opening_balance_map[truck] = {
-                            'billing_date': 'Previous Month',
-                            'dealer_code': dealer_code,
-                            'ppc': nov_closing_ppc,
-                            'premium': nov_closing_premium,
-                            'opc': nov_closing_opc,
-                            'total': total_nov_closing
-                        }
-                        if truck in truck_numbers_today:
-                            if truck not in previous_billings:
-                                previous_billings[truck] = []
-                            previous_billings[truck].append({
-                                'sale_date': 'Opening',
-                                'ppc': nov_closing_ppc,
-                                'premium': nov_closing_premium,
-                                'opc': nov_closing_opc,
-                                'total': total_nov_closing,
-                                'dealers': 'Opening Balance'
-                            })
-                
-                # Save to pending_vehicle_unloading for future use
-                # IMPORTANT: We're saving PREVIOUS MONTH's CLOSING (e.g., Nov closing when viewing Dec)
-                # This will be used as CURRENT MONTH's OPENING (e.g., Dec opening)
-                if vehicles_to_save:
-                    print(f"INFO: Saving {len(vehicles_to_save)} vehicles to pending_vehicle_unloading for {prev_month_year}")
-                    for truck, dealer_code, ppc, premium, opc in vehicles_to_save:
-                        cursor.execute('''
-                            INSERT INTO pending_vehicle_unloading 
-                            (month_year, vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''', (prev_month_year, truck, prev_prev_month_end, dealer_code, ppc, premium, opc))
-                    db.conn.commit()
-                    print(f"INFO: Successfully saved {len(vehicles_to_save)} vehicles for {prev_month_year}")
         
+        # Get earlier billings for trucks billed today (from current month, before selected date)
         if truck_numbers_today:
             placeholders = ','.join(['?' for _ in truck_numbers_today])
             # Include both sales_data and other_dealers_billing for previous billings
