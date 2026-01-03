@@ -2304,14 +2304,19 @@ def get_dealer_balance():
         truck_unloading_consumed = {}  # Track how much unloading has been attributed to previous billings
         
         # First, get opening balance vehicles to include in cumulative billing
+        # Use daily_vehicle_pending for the previous day (which is the opening for selected date)
         opening_balance_vehicles = {}
         has_current_month_pending = False
         try:
+            from datetime import timedelta
+            selected_dt = datetime.strptime(selected_date, '%Y-%m-%d')
+            prev_date = (selected_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+            
             cursor.execute('''
                 SELECT vehicle_number, ppc_qty, premium_qty, opc_qty
-                FROM pending_vehicle_unloading
-                WHERE month_year = ?
-            ''', (month_year,))
+                FROM daily_vehicle_pending
+                WHERE date = ?
+            ''', (prev_date,))
             rows = cursor.fetchall()
             if rows:
                 has_current_month_pending = True
