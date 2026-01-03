@@ -29,13 +29,39 @@ def build_daily_map():
     dates = [row[0] for row in cursor.fetchall()]
     print(f"Processing {len(dates)} dates from {dates[0]} to {dates[-1]}")
     
-    # Start with Nov 1 opening balances
-    current_date = '2025-11-01'
+    # Initialize Nov 1 opening balances from pending_vehicle_unloading
+    print("Initializing Nov 1, 2025 opening balances...")
+    cursor.execute("""
+        SELECT vehicle_number, billing_date, dealer_code, ppc_qty, premium_qty, opc_qty
+        FROM pending_vehicle_unloading
+        WHERE month_year = '2025-11'
+    """)
+    
+    nov1_count = 0
+    for row in cursor.fetchall():
+        vehicle_number = row[0]
+        billing_date = row[1] or '2025-10-31'
+        dealer_code = row[2]
+        ppc_qty = row[3] or 0
+        premium_qty = row[4] or 0
+        opc_qty = row[5] or 0
+        
+        # Only insert if there's a positive balance
+        if ppc_qty + premium_qty + opc_qty > 0.01:
+            cursor.execute("""
+                INSERT OR REPLACE INTO daily_vehicle_pending
+                (date, vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, ('2025-11-01', vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, billing_date))
+            nov1_count += 1
+    
+    conn.commit()
+    print(f"Initialized {nov1_count} vehicles for Nov 1, 2025")
     
     # Process each date
     for date in dates:
         if date == '2025-11-01':
-            continue  # Already initialized
+            continue  # Already initialized above
         
         # Get previous date's balances
         cursor.execute("""
