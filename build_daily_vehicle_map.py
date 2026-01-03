@@ -60,8 +60,6 @@ def build_daily_map():
     
     # Process each date
     for date in dates:
-        if date == '2025-11-01':
-            continue  # Already initialized above
         
         # Get previous date's balances
         cursor.execute("""
