@@ -2877,23 +2877,21 @@ def get_consolidated_vehicles():
         ''', (prev_date,))
         rows = cursor.fetchall()
         for row in rows:
-            truck = row[0]
-            # Extract just the truck number (last 4 digits) for matching
-            truck_short = truck[-4:] if len(truck) > 4 else truck
-            opening_balance_map[truck_short] = {
+            full_vehicle_number = row[0]
+            opening_balance_map[full_vehicle_number] = {
                 'billing_date': row[1] or 'Previous Day',
                 'dealer_code': row[2],
                 'ppc': row[3] or 0,
                 'premium': row[4] or 0,
                 'opc': row[5] or 0,
-                'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0),
-                'full_vehicle_number': truck
+                'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0)
             }
             # Add opening balance to previous_billings for trucks billed today
-            if truck_short in truck_numbers_today:
-                if truck_short not in previous_billings:
-                    previous_billings[truck_short] = []
-                previous_billings[truck_short].append({
+            # Match by full vehicle number
+            if full_vehicle_number in truck_numbers_today:
+                if full_vehicle_number not in previous_billings:
+                    previous_billings[full_vehicle_number] = []
+                previous_billings[full_vehicle_number].append({
                     'sale_date': row[1] or 'Opening',
                     'ppc': row[3] or 0,
                     'premium': row[4] or 0,
@@ -2914,17 +2912,15 @@ def get_consolidated_vehicles():
             ''', (selected_date,))
             rows = cursor.fetchall()
             for row in rows:
-                truck = row[0]
-                truck_short = truck[-4:] if len(truck) > 4 else truck
-                if truck_short not in opening_balance_map:
-                    opening_balance_map[truck_short] = {
+                full_vehicle_number = row[0]
+                if full_vehicle_number not in opening_balance_map:
+                    opening_balance_map[full_vehicle_number] = {
                         'billing_date': row[1] or 'Same Day',
                         'dealer_code': row[2],
                         'ppc': row[3] or 0,
                         'premium': row[4] or 0,
                         'opc': row[5] or 0,
-                        'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0),
-                        'full_vehicle_number': truck
+                        'total': (row[3] or 0) + (row[4] or 0) + (row[5] or 0)
                     }
         
         # Get earlier billings for trucks billed today (from current month, before selected date)
