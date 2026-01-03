@@ -2567,9 +2567,55 @@ def get_dealer_balance():
                     'is_manual': False
                 })
         
+        # Add vehicles from opening_balance_vehicles that were NOT billed in current month
+        # These are vehicles with pending from previous day that haven't been re-billed
+        for truck, opening_bal in opening_balance_vehicles.items():
+            # Skip if this truck was already processed in billing_data (billed in current month)
+            if truck in truck_cumulative_billed and truck_cumulative_billed[truck] != opening_bal:
+                continue  # Already processed as part of current month billing
+            
+            # Get unloading for this truck
+            unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
+            
+            # Calculate pending
+            pending_ppc = opening_bal['ppc'] - unloaded['ppc']
+            pending_premium = opening_bal['premium'] - unloaded['premium']
+            pending_opc = opening_bal['opc'] - unloaded['opc']
+            
+            # Only add if there's pending material
+            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
+                # Get dealer name from daily_vehicle_pending
+                cursor.execute('''
+                    SELECT dealer_code
+                    FROM daily_vehicle_pending
+                    WHERE vehicle_number = ? AND date = ?
+                ''', (truck, prev_date))
+                dealer_row = cursor.fetchone()
+                dealer_code = dealer_row[0] if dealer_row else None
+                
+                # Look up dealer name
+                dealer_name = 'Unknown'
+                if dealer_code:
+                    cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
+                    dn_row = cursor.fetchone()
+                    dealer_name = dn_row[0] if dn_row else f'Dealer {dealer_code}'
+                
+                pending_vehicles.append({
+                    'truck_number': truck,
+                    'billing_date': 'Previous Day',
+                    'dealer_name': dealer_name,
+                    'billed_ppc': opening_bal['ppc'],
+                    'billed_premium': opening_bal['premium'],
+                    'billed_opc': opening_bal['opc'],
+                    'unloaded_ppc': unloaded['ppc'],
+                    'unloaded_premium': unloaded['premium'],
+                    'unloaded_opc': unloaded['opc'],
+                    'is_manual': False
+                })
+        
         # Also get manually added pending vehicles from opening_material_balance page
         # If no current month pending vehicles, add from opening_balance_vehicles calculated earlier
-        if has_current_month_pending:
+        if False:  # Disabled - we now use daily_vehicle_pending above
             try:
                 cursor.execute('''
                     SELECT p.vehicle_number, p.billing_date, p.dealer_code, 
