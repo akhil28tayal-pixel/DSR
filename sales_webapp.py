@@ -2569,9 +2569,12 @@ def get_dealer_balance():
         
         # Add vehicles from opening_balance_vehicles that were NOT billed in current month
         # These are vehicles with pending from previous day that haven't been re-billed
+        # Track which trucks were billed in current month
+        trucks_billed_in_month = set(row[0] for row in billing_data)
+        
         for truck, opening_bal in opening_balance_vehicles.items():
-            # Skip if this truck was already processed in billing_data (billed in current month)
-            if truck in truck_cumulative_billed and truck_cumulative_billed[truck] != opening_bal:
+            # Skip if this truck was billed in current month (already processed above)
+            if truck in trucks_billed_in_month:
                 continue  # Already processed as part of current month billing
             
             # Get unloading for this truck
