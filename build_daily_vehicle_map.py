@@ -68,23 +68,7 @@ def build_daily_map():
         
         billing_today = {}
         for row in cursor.fetchall():
-            truck = row[0]
-            # Find full vehicle number from previous balances
-            vehicle = None
-            for v in prev_balances:
-                if v.endswith(truck):
-                    vehicle = v
-                    break
-            
-            if not vehicle:
-                # New vehicle - construct full vehicle number
-                # Try to find from sales_data
-                cursor.execute("SELECT DISTINCT truck_number FROM sales_data WHERE truck_number LIKE ?", (f'%{truck}',))
-                result = cursor.fetchone()
-                if result:
-                    vehicle = result[0]
-                else:
-                    vehicle = f'HR{truck}'  # Default prefix
+            vehicle = row[0]  # Use full vehicle number from sales_data directly
             
             if vehicle not in billing_today:
                 billing_today[vehicle] = {'ppc': 0, 'premium': 0, 'opc': 0, 'dealer_code': row[1]}
@@ -103,15 +87,7 @@ def build_daily_map():
         """, (date,))
         
         for row in cursor.fetchall():
-            truck = row[0]
-            vehicle = None
-            for v in prev_balances:
-                if v.endswith(truck):
-                    vehicle = v
-                    break
-            
-            if not vehicle:
-                vehicle = f'HR{truck}'
+            vehicle = row[0]  # Use full vehicle number directly
             
             if vehicle not in billing_today:
                 billing_today[vehicle] = {'ppc': 0, 'premium': 0, 'opc': 0, 'dealer_code': None}
@@ -131,15 +107,7 @@ def build_daily_map():
         
         unloading_today = {}
         for row in cursor.fetchall():
-            truck = row[0]
-            vehicle = None
-            for v in prev_balances:
-                if v.endswith(truck):
-                    vehicle = v
-                    break
-            
-            if not vehicle:
-                vehicle = f'HR{truck}'
+            vehicle = row[0]  # Use full vehicle number directly
             
             unloading_today[vehicle] = {
                 'ppc': row[1] or 0,
