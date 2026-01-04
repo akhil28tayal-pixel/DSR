@@ -2534,110 +2534,72 @@ def get_dealer_balance():
             except:
                 pass
         
-        # For vehicles billed on selected date, use daily_vehicle_pending data directly
-        # This ensures consistency with the vehicle unloading page
-        cursor.execute('''
-            SELECT vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date
-            FROM daily_vehicle_pending
-            WHERE date = ? AND last_billing_date = ?
-        ''', (selected_date, selected_date))
+        # Calculate pending vehicles in real-time from sales_data and vehicle_unloading
+        # This ensures unloading changes are immediately reflected without rebuilding daily_vehicle_pending
         
-        for row in cursor.fetchall():
+        # Get all vehicles with billing up to selected date
+        cursor.execute('''
+            SELECT 
+                s.truck_number,
+                MIN(s.sale_date) as first_billing_date,
+                MAX(s.sale_date) as last_billing_date,
+                s.dealer_name,
+                s.dealer_code,
+                SUM(s.ppc_quantity) as total_billed_ppc,
+                SUM(s.premium_quantity) as total_billed_premium,
+                SUM(s.opc_quantity) as total_billed_opc
+            FROM sales_data s
+            WHERE s.sale_date <= ?
+            GROUP BY s.truck_number, s.dealer_name, s.dealer_code
+        ''', (selected_date,))
+        
+        billing_data = cursor.fetchall()
+        
+        for row in billing_data:
             truck_number = row[0]
-            pending_ppc = row[1] or 0
-            pending_premium = row[2] or 0
-            pending_opc = row[3] or 0
+            first_billing_date = row[1]
+            last_billing_date = row[2]
+            dealer_name = row[3]
             dealer_code = row[4]
-            billing_date = row[5]
+            total_billed_ppc = row[5] or 0
+            total_billed_premium = row[6] or 0
+            total_billed_opc = row[7] or 0
+            
+            # Get total unloaded up to selected date
+            cursor.execute('''
+                SELECT 
+                    SUM(ppc_unloaded),
+                    SUM(premium_unloaded),
+                    SUM(opc_unloaded)
+                FROM vehicle_unloading
+                WHERE truck_number = ? AND unloading_date <= ?
+            ''', (truck_number, selected_date))
+            
+            unload_row = cursor.fetchone()
+            total_unloaded_ppc = unload_row[0] or 0
+            total_unloaded_premium = unload_row[1] or 0
+            total_unloaded_opc = unload_row[2] or 0
+            
+            # Calculate pending
+            pending_ppc = total_billed_ppc - total_unloaded_ppc
+            pending_premium = total_billed_premium - total_unloaded_premium
+            pending_opc = total_billed_opc - total_unloaded_opc
             
             # Only show if there's pending material
             if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
-                # Get dealer name
-                cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
-                dn_row = cursor.fetchone()
-                dealer_name = dn_row[0] if dn_row else f'Dealer {dealer_code}'
-                
-                # Get total billed and unloaded for this vehicle on selected date
-                cursor.execute('''
-                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date = ?
-                ''', (truck_number, selected_date))
-                billed_row = cursor.fetchone()
-                billed_ppc = billed_row[0] or 0
-                billed_premium = billed_row[1] or 0
-                billed_opc = billed_row[2] or 0
-                
-                # Calculate unloaded as billed - pending
-                unloaded_ppc = billed_ppc - pending_ppc
-                unloaded_premium = billed_premium - pending_premium
-                unloaded_opc = billed_opc - pending_opc
+                # Determine billing date to display
+                display_billing_date = last_billing_date if last_billing_date == selected_date else 'Previous Day'
                 
                 pending_vehicles.append({
                     'truck_number': truck_number,
-                    'billing_date': billing_date,
+                    'billing_date': display_billing_date,
                     'dealer_name': dealer_name,
-                    'billed_ppc': billed_ppc,
-                    'billed_premium': billed_premium,
-                    'billed_opc': billed_opc,
-                    'unloaded_ppc': max(0, unloaded_ppc),
-                    'unloaded_premium': max(0, unloaded_premium),
-                    'unloaded_opc': max(0, unloaded_opc),
-                    'pending_ppc': pending_ppc,
-                    'pending_premium': pending_premium,
-                    'pending_opc': pending_opc,
-                    'is_manual': False
-                })
-        
-        # Add vehicles from previous day pending (not billed today)
-        # Use daily_vehicle_pending for selected date with last_billing_date != selected_date
-        cursor.execute('''
-            SELECT vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date
-            FROM daily_vehicle_pending
-            WHERE date = ? AND last_billing_date != ?
-        ''', (selected_date, selected_date))
-        
-        for row in cursor.fetchall():
-            truck_number = row[0]
-            pending_ppc = row[1] or 0
-            pending_premium = row[2] or 0
-            pending_opc = row[3] or 0
-            dealer_code = row[4]
-            last_billing_date = row[5]
-            
-            # Only show if there's pending material
-            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
-                # Get dealer name
-                cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
-                dn_row = cursor.fetchone()
-                dealer_name = dn_row[0] if dn_row else f'Dealer {dealer_code}'
-                
-                # Get total billed for this vehicle (from its original billing date)
-                cursor.execute('''
-                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date = ?
-                ''', (truck_number, last_billing_date))
-                billed_row = cursor.fetchone()
-                billed_ppc = billed_row[0] or 0 if billed_row else pending_ppc
-                billed_premium = billed_row[1] or 0 if billed_row else pending_premium
-                billed_opc = billed_row[2] or 0 if billed_row else pending_opc
-                
-                # Calculate unloaded as billed - pending
-                unloaded_ppc = billed_ppc - pending_ppc
-                unloaded_premium = billed_premium - pending_premium
-                unloaded_opc = billed_opc - pending_opc
-                
-                pending_vehicles.append({
-                    'truck_number': truck_number,
-                    'billing_date': 'Previous Day',
-                    'dealer_name': dealer_name,
-                    'billed_ppc': billed_ppc,
-                    'billed_premium': billed_premium,
-                    'billed_opc': billed_opc,
-                    'unloaded_ppc': max(0, unloaded_ppc),
-                    'unloaded_premium': max(0, unloaded_premium),
-                    'unloaded_opc': max(0, unloaded_opc),
+                    'billed_ppc': total_billed_ppc,
+                    'billed_premium': total_billed_premium,
+                    'billed_opc': total_billed_opc,
+                    'unloaded_ppc': total_unloaded_ppc,
+                    'unloaded_premium': total_unloaded_premium,
+                    'unloaded_opc': total_unloaded_opc,
                     'pending_ppc': pending_ppc,
                     'pending_premium': pending_premium,
                     'pending_opc': pending_opc,
