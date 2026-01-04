@@ -3292,6 +3292,15 @@ def get_consolidated_vehicles():
             ''', (truck_number, selected_date))
             daily_pending = cursor.fetchone()
             
+            # Always get month_unloaded as it's used later in FIFO calculation
+            cursor.execute('''
+                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
+                       COALESCE(SUM(opc_unloaded), 0)
+                FROM vehicle_unloading
+                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+            ''', (truck_number, month_start, selected_date))
+            month_unloaded = cursor.fetchone()
+            
             if daily_pending:
                 pending_ppc = daily_pending[0] or 0
                 pending_premium = daily_pending[1] or 0
@@ -3319,14 +3328,6 @@ def get_consolidated_vehicles():
                     WHERE truck_number = ? AND sale_date >= ? AND sale_date {billing_end_op} ?
                 ''', (truck_number, month_start, selected_date))
                 month_other_billed = cursor.fetchone()
-                
-                cursor.execute('''
-                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
-                           COALESCE(SUM(opc_unloaded), 0)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, month_start, selected_date))
-                month_unloaded = cursor.fetchone()
                 
                 pending_ppc = opening_ppc + (month_billed[0] or 0) + (month_other_billed[0] or 0) - (month_unloaded[0] or 0)
                 pending_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - (month_unloaded[1] or 0)
