@@ -3540,7 +3540,7 @@ def get_consolidated_vehicles():
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
                             if truck_number == 'HR38AB5491':
-                                print(f"DEBUG HR38AB5491 CARD CREATE: card_pending_ppc={card_pending_ppc}, total_ppc={total_ppc}, unloaded_ppc={unloaded_ppc}")
+                                app.logger.info(f"DEBUG HR38AB5491 CARD CREATE: card_pending_ppc={card_pending_ppc}, total_ppc={total_ppc}, unloaded_ppc={unloaded_ppc}")
                             
                             # If truck has other_dealers_billing today, merge pending to that card
                             # But if truck has sales_data today, keep them as separate cards
@@ -3651,6 +3651,8 @@ def get_consolidated_vehicles():
                                 has_unloading = len(prev_day_unloading) > 0
                                 
                                 if has_pending or has_unloading:
+                                    if truck_number == 'HR38AB5491':
+                                        app.logger.info(f"DEBUG HR38AB5491 STORING: cumulative_ppc={cumulative_ppc}, cumulative_unloaded_ppc will be={cumulative_ppc}")
                                     trucks_today[card_key] = {
                                         'truck_number': truck_number,
                                         'card_key': card_key,
@@ -3930,7 +3932,7 @@ def get_consolidated_vehicles():
                 elif truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
                     # We added extra invoices - use total_ppc for remaining
                     if truck_number == 'HR38AB5491':
-                        print(f"DEBUG HR38AB5491: total_ppc={truck_data.get('total_ppc', 0)}, card_unloaded_ppc={card_unloaded_ppc}, card_pending_ppc_val={card_pending_ppc_val}")
+                        app.logger.info(f"DEBUG HR38AB5491: total_ppc={truck_data.get('total_ppc', 0)}, card_unloaded_ppc={card_unloaded_ppc}, card_pending_ppc_val={card_pending_ppc_val}")
                     remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
                 else:
                     # Normal FIFO pending - subtract today's unloading from card_pending
