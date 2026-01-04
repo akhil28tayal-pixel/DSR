@@ -3386,9 +3386,12 @@ def get_consolidated_vehicles():
                             fifo_opening_premium = prev_day_pending[1] or 0
                             fifo_opening_opc = prev_day_pending[2] or 0
                         else:
-                            fifo_opening_ppc = opening_ppc
-                            fifo_opening_premium = opening_premium
-                            fifo_opening_opc = opening_opc
+                            # No pending found for day before first billing
+                            # This means the vehicle started fresh in this month
+                            # Do NOT use opening_balance_map as it's from prev_date of selected_date
+                            fifo_opening_ppc = 0
+                            fifo_opening_premium = 0
+                            fifo_opening_opc = 0
                         
                         # Get unloading from first billing date up to selected date
                         # This includes unloading that happens after billing
