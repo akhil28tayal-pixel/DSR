@@ -3292,6 +3292,11 @@ def get_consolidated_vehicles():
             ''', (truck_number, selected_date))
             daily_pending = cursor.fetchone()
             
+            # Get opening balance - always needed for FIFO calculation
+            opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
+            opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
+            opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
+            
             # Always get month_unloaded as it's used later in FIFO calculation
             cursor.execute('''
                 SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
@@ -3307,9 +3312,6 @@ def get_consolidated_vehicles():
                 pending_opc = daily_pending[2] or 0
             else:
                 # Fallback: calculate if not in daily_vehicle_pending
-                opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
-                opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
-                opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
                 
                 billing_end_op = '<=' if not is_billed_today else '<'
                 
