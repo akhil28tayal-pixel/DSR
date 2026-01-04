@@ -2537,7 +2537,12 @@ def get_dealer_balance():
         # Calculate pending vehicles in real-time from sales_data and vehicle_unloading
         # This ensures unloading changes are immediately reflected without rebuilding daily_vehicle_pending
         
-        # Get all vehicles with billing up to selected date
+        # Get month start for the selected date
+        from datetime import datetime
+        selected_dt = datetime.strptime(selected_date, '%Y-%m-%d')
+        month_start = selected_dt.replace(day=1).strftime('%Y-%m-%d')
+        
+        # Get all vehicles with billing in current month up to selected date
         cursor.execute('''
             SELECT 
                 s.truck_number,
@@ -2549,9 +2554,9 @@ def get_dealer_balance():
                 SUM(s.premium_quantity) as total_billed_premium,
                 SUM(s.opc_quantity) as total_billed_opc
             FROM sales_data s
-            WHERE s.sale_date <= ?
+            WHERE s.sale_date >= ? AND s.sale_date <= ?
             GROUP BY s.truck_number, s.dealer_name, s.dealer_code
-        ''', (selected_date,))
+        ''', (month_start, selected_date))
         
         billing_data = cursor.fetchall()
         
@@ -2561,45 +2566,62 @@ def get_dealer_balance():
             last_billing_date = row[2]
             dealer_name = row[3]
             dealer_code = row[4]
-            total_billed_ppc = row[5] or 0
-            total_billed_premium = row[6] or 0
-            total_billed_opc = row[7] or 0
+            month_billed_ppc = row[5] or 0
+            month_billed_premium = row[6] or 0
+            month_billed_opc = row[7] or 0
             
-            # Get total unloaded up to selected date
+            # Get opening balance from previous month (if exists in daily_vehicle_pending)
+            prev_month_end = (selected_dt.replace(day=1) - timedelta(days=1)).strftime('%Y-%m-%d')
+            cursor.execute('''
+                SELECT ppc_qty, premium_qty, opc_qty
+                FROM daily_vehicle_pending
+                WHERE vehicle_number = ? AND date = ?
+            ''', (truck_number, prev_month_end))
+            
+            opening_row = cursor.fetchone()
+            opening_ppc = opening_row[0] if opening_row else 0
+            opening_premium = opening_row[1] if opening_row else 0
+            opening_opc = opening_row[2] if opening_row else 0
+            
+            # Get total unloaded in current month up to selected date
             cursor.execute('''
                 SELECT 
                     SUM(ppc_unloaded),
                     SUM(premium_unloaded),
                     SUM(opc_unloaded)
                 FROM vehicle_unloading
-                WHERE truck_number = ? AND unloading_date <= ?
-            ''', (truck_number, selected_date))
+                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+            ''', (truck_number, month_start, selected_date))
             
             unload_row = cursor.fetchone()
-            total_unloaded_ppc = unload_row[0] or 0
-            total_unloaded_premium = unload_row[1] or 0
-            total_unloaded_opc = unload_row[2] or 0
+            month_unloaded_ppc = unload_row[0] or 0
+            month_unloaded_premium = unload_row[1] or 0
+            month_unloaded_opc = unload_row[2] or 0
             
-            # Calculate pending
-            pending_ppc = total_billed_ppc - total_unloaded_ppc
-            pending_premium = total_billed_premium - total_unloaded_premium
-            pending_opc = total_billed_opc - total_unloaded_opc
+            # Calculate pending: opening + month_billed - month_unloaded
+            pending_ppc = opening_ppc + month_billed_ppc - month_unloaded_ppc
+            pending_premium = opening_premium + month_billed_premium - month_unloaded_premium
+            pending_opc = opening_opc + month_billed_opc - month_unloaded_opc
             
             # Only show if there's pending material
             if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
                 # Determine billing date to display
                 display_billing_date = last_billing_date if last_billing_date == selected_date else 'Previous Day'
                 
+                # For display, show total billed and unloaded (opening + month)
+                total_billed_ppc = opening_ppc + month_billed_ppc
+                total_unloaded_ppc = month_unloaded_ppc
+                
                 pending_vehicles.append({
                     'truck_number': truck_number,
                     'billing_date': display_billing_date,
                     'dealer_name': dealer_name,
-                    'billed_ppc': total_billed_ppc,
-                    'billed_premium': total_billed_premium,
-                    'billed_opc': total_billed_opc,
-                    'unloaded_ppc': total_unloaded_ppc,
-                    'unloaded_premium': total_unloaded_premium,
-                    'unloaded_opc': total_unloaded_opc,
+                    'billed_ppc': month_billed_ppc,
+                    'billed_premium': month_billed_premium,
+                    'billed_opc': month_billed_opc,
+                    'unloaded_ppc': month_unloaded_ppc,
+                    'unloaded_premium': month_unloaded_premium,
+                    'unloaded_opc': month_unloaded_opc,
                     'pending_ppc': pending_ppc,
                     'pending_premium': pending_premium,
                     'pending_opc': pending_opc,
