@@ -2586,56 +2586,55 @@ def get_dealer_balance():
                     'is_manual': False
                 })
         
-        # Add vehicles from opening_balance_vehicles (previous day pending)
-        # Show these if they have unloading on the selected date OR if they still have pending material
-        # This ensures vehicles appear on the date they are unloaded, not just when billed
-        for truck, opening_bal in opening_balance_vehicles.items():
+        # Add vehicles from previous day pending (not billed today)
+        # Use daily_vehicle_pending for selected date with last_billing_date != selected_date
+        cursor.execute('''
+            SELECT vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date
+            FROM daily_vehicle_pending
+            WHERE date = ? AND last_billing_date != ?
+        ''', (selected_date, selected_date))
+        
+        for row in cursor.fetchall():
+            truck_number = row[0]
+            pending_ppc = row[1] or 0
+            pending_premium = row[2] or 0
+            pending_opc = row[3] or 0
+            dealer_code = row[4]
+            last_billing_date = row[5]
             
-            # Get unloading that was consumed from opening balance during initialization
-            # This was calculated at lines 2336-2352
-            consumed_unloading = truck_unloading_consumed.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
-            
-            # Calculate pending for opening balance
-            # The consumed_unloading already includes what was attributed to opening balance
-            pending_ppc = opening_bal['ppc'] - consumed_unloading['ppc']
-            pending_premium = opening_bal['premium'] - consumed_unloading['premium']
-            pending_opc = opening_bal['opc'] - consumed_unloading['opc']
-            
-            # Check if this vehicle has unloading on the selected date
-            unloading_today = unloading_today_map.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
-            has_unloading_today = (unloading_today['ppc'] > 0.01 or 
-                                  unloading_today['premium'] > 0.01 or 
-                                  unloading_today['opc'] > 0.01)
-            
-            # Show if: (1) has unloading today OR (2) still has pending material
-            # This ensures vehicles appear on the date they are unloaded
-            if has_unloading_today or pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
-                # Get dealer name from daily_vehicle_pending
-                cursor.execute('''
-                    SELECT dealer_code
-                    FROM daily_vehicle_pending
-                    WHERE vehicle_number = ? AND date = ?
-                ''', (truck, prev_date))
-                dealer_row = cursor.fetchone()
-                dealer_code = dealer_row[0] if dealer_row else None
+            # Only show if there's pending material
+            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
+                # Get dealer name
+                cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
+                dn_row = cursor.fetchone()
+                dealer_name = dn_row[0] if dn_row else f'Dealer {dealer_code}'
                 
-                # Look up dealer name
-                dealer_name = 'Unknown'
-                if dealer_code:
-                    cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
-                    dn_row = cursor.fetchone()
-                    dealer_name = dn_row[0] if dn_row else f'Dealer {dealer_code}'
+                # Get total billed for this vehicle (from its original billing date)
+                cursor.execute('''
+                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date = ?
+                ''', (truck_number, last_billing_date))
+                billed_row = cursor.fetchone()
+                billed_ppc = billed_row[0] or 0 if billed_row else pending_ppc
+                billed_premium = billed_row[1] or 0 if billed_row else pending_premium
+                billed_opc = billed_row[2] or 0 if billed_row else pending_opc
+                
+                # Calculate unloaded as billed - pending
+                unloaded_ppc = billed_ppc - pending_ppc
+                unloaded_premium = billed_premium - pending_premium
+                unloaded_opc = billed_opc - pending_opc
                 
                 pending_vehicles.append({
-                    'truck_number': truck,
+                    'truck_number': truck_number,
                     'billing_date': 'Previous Day',
                     'dealer_name': dealer_name,
-                    'billed_ppc': opening_bal['ppc'],
-                    'billed_premium': opening_bal['premium'],
-                    'billed_opc': opening_bal['opc'],
-                    'unloaded_ppc': consumed_unloading['ppc'],
-                    'unloaded_premium': consumed_unloading['premium'],
-                    'unloaded_opc': consumed_unloading['opc'],
+                    'billed_ppc': billed_ppc,
+                    'billed_premium': billed_premium,
+                    'billed_opc': billed_opc,
+                    'unloaded_ppc': max(0, unloaded_ppc),
+                    'unloaded_premium': max(0, unloaded_premium),
+                    'unloaded_opc': max(0, unloaded_opc),
                     'is_manual': False
                 })
         
