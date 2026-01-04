@@ -2572,17 +2572,18 @@ def get_dealer_balance():
         # This allows vehicles like HR58C8562 to show twice: once for Dec 31 pending, once for Jan 1 billing
         for truck, opening_bal in opening_balance_vehicles.items():
             
-            # Get unloading for this truck that was already consumed by current month billings
-            # We need to use the consumed amount to avoid double-counting unloading
+            # Get unloading that was consumed from opening balance during initialization
+            # This was calculated at lines 2336-2352
             consumed_unloading = truck_unloading_consumed.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
             
-            # Calculate pending using only the unloading that was consumed from opening balance
-            # (not the unloading consumed by current month billings)
+            # Calculate pending for opening balance
+            # The consumed_unloading already includes what was attributed to opening balance
             pending_ppc = opening_bal['ppc'] - consumed_unloading['ppc']
             pending_premium = opening_bal['premium'] - consumed_unloading['premium']
             pending_opc = opening_bal['opc'] - consumed_unloading['opc']
             
-            # Only add if there's pending material
+            # Only add if there's pending material after unloading
+            # If fully unloaded, don't show the opening balance entry
             if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
                 # Get dealer name from daily_vehicle_pending
                 cursor.execute('''
