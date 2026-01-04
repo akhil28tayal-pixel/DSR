@@ -2560,40 +2560,9 @@ def get_dealer_balance():
             dealer_code = row[4]
             last_billing_date = row[5]
             
-            # Skip vehicles with zero pending (fully unloaded before today)
+            # Skip vehicles with zero pending
             if pending_ppc < 0.01 and pending_premium < 0.01 and pending_opc < 0.01:
                 continue
-            
-            # Skip vehicles that were billed and fully unloaded on the same day (selected_date)
-            if last_billing_date == selected_date:
-                # Check if this vehicle was fully unloaded on the same day
-                cursor.execute('''
-                    SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
-                    FROM vehicle_unloading
-                    WHERE truck_number = ? AND unloading_date = ?
-                ''', (truck_number, selected_date))
-                same_day_unloading = cursor.fetchone()
-                same_day_unloaded_ppc = same_day_unloading[0] or 0 if same_day_unloading else 0
-                same_day_unloaded_premium = same_day_unloading[1] or 0 if same_day_unloading else 0
-                same_day_unloaded_opc = same_day_unloading[2] or 0 if same_day_unloading else 0
-                
-                # Get billed amount on the same day
-                cursor.execute('''
-                    SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
-                    FROM sales_data
-                    WHERE truck_number = ? AND sale_date = ?
-                ''', (truck_number, selected_date))
-                same_day_billing = cursor.fetchone()
-                same_day_billed_ppc = same_day_billing[0] or 0 if same_day_billing else 0
-                same_day_billed_premium = same_day_billing[1] or 0 if same_day_billing else 0
-                same_day_billed_opc = same_day_billing[2] or 0 if same_day_billing else 0
-                
-                # Skip if billed and fully unloaded on the same day
-                if (abs(same_day_billed_ppc - same_day_unloaded_ppc) < 0.01 and
-                    abs(same_day_billed_premium - same_day_unloaded_premium) < 0.01 and
-                    abs(same_day_billed_opc - same_day_unloaded_opc) < 0.01 and
-                    same_day_billed_ppc > 0):
-                    continue
             
             # Get dealer name
             cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
