@@ -4081,6 +4081,12 @@ def get_consolidated_vehicles():
                 billing_date = row[1] or 'Previous Month'
                 dealer_code = row[2]
                 
+                # Skip if this truck is already being handled by earlier_billed_trucks logic
+                # This prevents duplication when a truck is billed in the current month (before selected date)
+                # Only show opening balance cards for trucks from PREVIOUS month
+                if truck_number in earlier_billed_trucks:
+                    continue
+                
                 # Look up dealer name
                 cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
                 dealer_row = cursor.fetchone()
