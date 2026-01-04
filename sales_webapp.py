@@ -3368,14 +3368,35 @@ def get_consolidated_vehicles():
                     
                     if billing_rows:
                         # FIFO: Consume in date order - opening first, then all billing by date
+                        # Get the correct opening balance for the first billing date
+                        first_billing_date = billing_rows[0][4]  # sale_date of first invoice
+                        prev_billing_date = (datetime.strptime(first_billing_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+                        
+                        # Query daily_vehicle_pending for the day before first billing to get correct opening
+                        cursor.execute('''
+                            SELECT ppc_qty, premium_qty, opc_qty
+                            FROM daily_vehicle_pending
+                            WHERE vehicle_number = ? AND date = ?
+                        ''', (truck_number, prev_billing_date))
+                        prev_day_pending = cursor.fetchone()
+                        
+                        if prev_day_pending:
+                            fifo_opening_ppc = prev_day_pending[0] or 0
+                            fifo_opening_premium = prev_day_pending[1] or 0
+                            fifo_opening_opc = prev_day_pending[2] or 0
+                        else:
+                            fifo_opening_ppc = opening_ppc
+                            fifo_opening_premium = opening_premium
+                            fifo_opening_opc = opening_opc
+                        
                         unloaded_ppc = month_unloaded[0] or 0
                         unloaded_premium = month_unloaded[1] or 0
                         unloaded_opc = month_unloaded[2] or 0
                         
                         # First consume opening balance
-                        consume_from_opening_ppc = min(opening_ppc, unloaded_ppc)
-                        consume_from_opening_premium = min(opening_premium, unloaded_premium)
-                        consume_from_opening_opc = min(opening_opc, unloaded_opc)
+                        consume_from_opening_ppc = min(fifo_opening_ppc, unloaded_ppc)
+                        consume_from_opening_premium = min(fifo_opening_premium, unloaded_premium)
+                        consume_from_opening_opc = min(fifo_opening_opc, unloaded_opc)
                         
                         remaining_to_consume_ppc = unloaded_ppc - consume_from_opening_ppc
                         remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
