@@ -3370,6 +3370,7 @@ def get_consolidated_vehicles():
                         # FIFO: Consume in date order - opening first, then all billing by date
                         # Get the correct opening balance for the first billing date
                         first_billing_date = billing_rows[0][4]  # sale_date of first invoice
+                        last_billing_date = billing_rows[-1][4]  # sale_date of last invoice
                         prev_billing_date = (datetime.strptime(first_billing_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
                         
                         # Query daily_vehicle_pending for the day before first billing to get correct opening
@@ -3389,9 +3390,19 @@ def get_consolidated_vehicles():
                             fifo_opening_premium = opening_premium
                             fifo_opening_opc = opening_opc
                         
-                        unloaded_ppc = month_unloaded[0] or 0
-                        unloaded_premium = month_unloaded[1] or 0
-                        unloaded_opc = month_unloaded[2] or 0
+                        # Get unloading only up to the last billing date in this card
+                        # Not all unloading up to selected_date
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
+                                   COALESCE(SUM(opc_unloaded), 0)
+                            FROM vehicle_unloading
+                            WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                        ''', (truck_number, first_billing_date, last_billing_date))
+                        card_unloaded = cursor.fetchone()
+                        
+                        unloaded_ppc = card_unloaded[0] or 0
+                        unloaded_premium = card_unloaded[1] or 0
+                        unloaded_opc = card_unloaded[2] or 0
                         
                         # First consume opening balance
                         consume_from_opening_ppc = min(fifo_opening_ppc, unloaded_ppc)
