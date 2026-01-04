@@ -3926,6 +3926,8 @@ def get_consolidated_vehicles():
                     remaining_ppc = 0
                 elif truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
                     # We added extra invoices - use total_ppc for remaining
+                    if truck_number == 'HR38AB5491':
+                        print(f"DEBUG HR38AB5491: total_ppc={truck_data.get('total_ppc', 0)}, card_unloaded_ppc={card_unloaded_ppc}, card_pending_ppc_val={card_pending_ppc_val}")
                     remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
                 else:
                     # Normal FIFO pending - subtract today's unloading from card_pending
