@@ -3413,6 +3413,9 @@ def get_consolidated_vehicles():
                         remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
                         remaining_to_consume_opc = unloaded_opc - consume_from_opening_opc
                         
+                        if truck_number == 'HR38AB5491':
+                            app.logger.info(f"DEBUG HR38AB5491 FIFO: fifo_opening_ppc={fifo_opening_ppc}, unloaded_ppc={unloaded_ppc}, remaining_to_consume_ppc={remaining_to_consume_ppc}")
+                        
                         # Now consume invoices in FIFO order (by date) until we've consumed enough
                         # billing_rows is already sorted by date ASC
                         pending_invoices = []
