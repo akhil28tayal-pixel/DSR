@@ -2665,6 +2665,10 @@ def get_dealer_balance():
             'total_closing': sum(d['closing_total'] for d in dealers)
         }
         
+        # Debug: Log the number of pending vehicles being returned
+        total_pending_bags = sum(v.get('billed_ppc', 0) * 20 for v in pending_vehicles)
+        print(f"DEBUG: Returning {len(pending_vehicles)} pending vehicles, {total_pending_bags} bags total for date {selected_date}")
+        
         return jsonify({
             'success': True,
             'dealers': dealers,
