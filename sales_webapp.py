@@ -3283,46 +3283,54 @@ def get_consolidated_vehicles():
             # For trucks billed today: add pending from earlier to the existing card
             is_billed_today = truck_number in actual_trucks_billed_today
             
-            # Calculate pending balance for this truck (from earlier billing, not including today)
-            opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
-            opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
-            opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
-            
-            # Get current month's billing (up to but NOT including selected date for trucks billed today)
-            billing_end_date = selected_date if not is_billed_today else selected_date
-            billing_end_op = '<=' if not is_billed_today else '<'
-            
-            cursor.execute(f'''
-                SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
-                       COALESCE(SUM(opc_quantity), 0)
-                FROM sales_data
-                WHERE truck_number = ? AND sale_date >= ? AND sale_date {billing_end_op} ?
-            ''', (truck_number, month_start, selected_date))
-            month_billed = cursor.fetchone()
-            
-            # Get current month's other_dealers_billing
-            cursor.execute(f'''
-                SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
-                       COALESCE(SUM(opc_quantity), 0)
-                FROM other_dealers_billing
-                WHERE truck_number = ? AND sale_date >= ? AND sale_date {billing_end_op} ?
-            ''', (truck_number, month_start, selected_date))
-            month_other_billed = cursor.fetchone()
-            
-            # Get current month's unloading up to and including selected date
-            # This is used to calculate pending for earlier billed trucks
+            # Get pending balance from daily_vehicle_pending for the selected date
+            # This is the authoritative source for pending amounts (uses FIFO logic)
             cursor.execute('''
-                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
-                       COALESCE(SUM(opc_unloaded), 0)
-                FROM vehicle_unloading
-                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-            ''', (truck_number, month_start, selected_date))
-            month_unloaded = cursor.fetchone()
+                SELECT ppc_qty, premium_qty, opc_qty
+                FROM daily_vehicle_pending
+                WHERE vehicle_number = ? AND date = ?
+            ''', (truck_number, selected_date))
+            daily_pending = cursor.fetchone()
             
-            # Calculate pending balance (for billing before today if billed today)
-            pending_ppc = opening_ppc + (month_billed[0] or 0) + (month_other_billed[0] or 0) - (month_unloaded[0] or 0)
-            pending_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - (month_unloaded[1] or 0)
-            pending_opc = opening_opc + (month_billed[2] or 0) + (month_other_billed[2] or 0) - (month_unloaded[2] or 0)
+            if daily_pending:
+                pending_ppc = daily_pending[0] or 0
+                pending_premium = daily_pending[1] or 0
+                pending_opc = daily_pending[2] or 0
+            else:
+                # Fallback: calculate if not in daily_vehicle_pending
+                opening_ppc = opening_balance_map.get(truck_number, {}).get('ppc', 0)
+                opening_premium = opening_balance_map.get(truck_number, {}).get('premium', 0)
+                opening_opc = opening_balance_map.get(truck_number, {}).get('opc', 0)
+                
+                billing_end_op = '<=' if not is_billed_today else '<'
+                
+                cursor.execute(f'''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                           COALESCE(SUM(opc_quantity), 0)
+                    FROM sales_data
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date {billing_end_op} ?
+                ''', (truck_number, month_start, selected_date))
+                month_billed = cursor.fetchone()
+                
+                cursor.execute(f'''
+                    SELECT COALESCE(SUM(ppc_quantity), 0), COALESCE(SUM(premium_quantity), 0), 
+                           COALESCE(SUM(opc_quantity), 0)
+                    FROM other_dealers_billing
+                    WHERE truck_number = ? AND sale_date >= ? AND sale_date {billing_end_op} ?
+                ''', (truck_number, month_start, selected_date))
+                month_other_billed = cursor.fetchone()
+                
+                cursor.execute('''
+                    SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
+                           COALESCE(SUM(opc_unloaded), 0)
+                    FROM vehicle_unloading
+                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                ''', (truck_number, month_start, selected_date))
+                month_unloaded = cursor.fetchone()
+                
+                pending_ppc = opening_ppc + (month_billed[0] or 0) + (month_other_billed[0] or 0) - (month_unloaded[0] or 0)
+                pending_premium = opening_premium + (month_billed[1] or 0) + (month_other_billed[1] or 0) - (month_unloaded[1] or 0)
+                pending_opc = opening_opc + (month_billed[2] or 0) + (month_other_billed[2] or 0) - (month_unloaded[2] or 0)
             
             # Check if this truck has unloading on the selected date
             cursor.execute('''
