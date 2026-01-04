@@ -661,8 +661,12 @@
             try {
                 const response = await fetch('/get_dealer_balance', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date: date })
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    },
+                    body: JSON.stringify({ date: date, _t: Date.now() })
                 });
                 
                 const data = await response.json();
