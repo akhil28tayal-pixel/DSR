@@ -26,7 +26,23 @@ def build_daily_map():
         ORDER BY txn_date
     """)
     
-    dates = [row[0] for row in cursor.fetchall()]
+    transaction_dates = [row[0] for row in cursor.fetchall()]
+    
+    # Generate all dates from Nov 1, 2025 to today (or latest transaction date + 1 day)
+    start_date = datetime.strptime('2025-11-01', '%Y-%m-%d')
+    if transaction_dates:
+        last_txn_date = datetime.strptime(transaction_dates[-1], '%Y-%m-%d')
+        end_date = max(datetime.now(), last_txn_date + timedelta(days=1))
+    else:
+        end_date = datetime.now()
+    
+    # Generate all dates in range
+    dates = []
+    current = start_date
+    while current <= end_date:
+        dates.append(current.strftime('%Y-%m-%d'))
+        current += timedelta(days=1)
+    
     print(f"Processing {len(dates)} dates from {dates[0]} to {dates[-1]}")
     
     # Initialize Nov 1 opening balances from pending_vehicle_unloading
