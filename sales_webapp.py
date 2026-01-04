@@ -2537,8 +2537,7 @@ def get_dealer_balance():
         # Calculate pending vehicles in real-time using daily_vehicle_pending as source
         # This ensures unloading changes are immediately reflected
         
-        # Simply query daily_vehicle_pending for the selected date
-        # This table is updated by build_daily_vehicle_map.py and reflects real-time unloading
+        # Get vehicles from daily_vehicle_pending with pending > 0
         cursor.execute('''
             SELECT 
                 vehicle_number,
@@ -2550,6 +2549,8 @@ def get_dealer_balance():
             FROM daily_vehicle_pending
             WHERE date = ? AND (ppc_qty > 0.01 OR premium_qty > 0.01 OR opc_qty > 0.01)
         ''', (selected_date,))
+        
+        pending_vehicles_set = set()  # Track which vehicles we've added
         
         for row in cursor.fetchall():
             truck_number = row[0]
@@ -2598,8 +2599,76 @@ def get_dealer_balance():
                 'pending_opc': pending_opc,
                 'is_manual': False
             })
+            pending_vehicles_set.add(truck_number)
         
-        # Old logic removed - we now use daily_vehicle_pending above (lines 2570-2617)
+        # Also include vehicles that have unloading on selected date but 0 pending
+        # This matches the logic in get_consolidated_vehicles
+        cursor.execute('''
+            SELECT DISTINCT truck_number
+            FROM vehicle_unloading
+            WHERE unloading_date = ?
+        ''', (selected_date,))
+        
+        for row in cursor.fetchall():
+            truck_number = row[0]
+            if truck_number in pending_vehicles_set:
+                continue  # Already added above
+            
+            # Get the billing info for this fully unloaded vehicle
+            # Query sales_data for the most recent billing
+            cursor.execute('''
+                SELECT sale_date, dealer_code, dealer_name,
+                       SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
+                FROM sales_data
+                WHERE truck_number = ? AND sale_date <= ?
+                GROUP BY sale_date, dealer_code, dealer_name
+                ORDER BY sale_date DESC
+                LIMIT 1
+            ''', (truck_number, selected_date))
+            
+            billing_row = cursor.fetchone()
+            if not billing_row:
+                continue  # No billing found, skip
+            
+            last_billing_date = billing_row[0]
+            dealer_code = billing_row[1]
+            dealer_name = billing_row[2]
+            billed_ppc = billing_row[3] or 0
+            billed_premium = billing_row[4] or 0
+            billed_opc = billing_row[5] or 0
+            
+            # Get total unloading for this vehicle up to selected date
+            cursor.execute('''
+                SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
+                FROM vehicle_unloading
+                WHERE truck_number = ? AND unloading_date <= ?
+            ''', (truck_number, selected_date))
+            
+            unloading_row = cursor.fetchone()
+            unloaded_ppc = unloading_row[0] or 0 if unloading_row else 0
+            unloaded_premium = unloading_row[1] or 0 if unloading_row else 0
+            unloaded_opc = unloading_row[2] or 0 if unloading_row else 0
+            
+            # Pending is 0 (fully unloaded)
+            display_billing_date = last_billing_date if last_billing_date == selected_date else 'Previous Day'
+            
+            pending_vehicles.append({
+                'truck_number': truck_number,
+                'billing_date': display_billing_date,
+                'dealer_name': dealer_name,
+                'billed_ppc': billed_ppc,
+                'billed_premium': billed_premium,
+                'billed_opc': billed_opc,
+                'unloaded_ppc': unloaded_ppc,
+                'unloaded_premium': unloaded_premium,
+                'unloaded_opc': unloaded_opc,
+                'pending_ppc': 0,
+                'pending_premium': 0,
+                'pending_opc': 0,
+                'is_manual': False
+            })
+        
+        # Old logic removed - we now use daily_vehicle_pending above
         
         db.close()
         
