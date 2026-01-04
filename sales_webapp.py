@@ -4208,6 +4208,26 @@ def get_consolidated_vehicles():
         # so that the FIFO logic can exclude unloading already assigned to opening cards
         assign_unloading_to_cards()
         
+        # After unloading is assigned, recalculate remaining for today's cards
+        # This is necessary because remaining calculation needs unloading_details to be populated
+        for card_key, truck_data in trucks_today.items():
+            if not truck_data.get('from_earlier_date'):
+                # Recalculate remaining for today's cards using now-populated unloading_details
+                today_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                today_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                today_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                
+                remaining_ppc = max(0, truck_data['total_ppc'] - today_unloaded_ppc)
+                remaining_premium = max(0, truck_data['total_premium'] - today_unloaded_premium)
+                remaining_opc = max(0, truck_data['total_opc'] - today_unloaded_opc)
+                remaining_total = remaining_ppc + remaining_premium + remaining_opc
+                
+                # Update remaining values
+                truck_data['remaining_ppc'] = round(remaining_ppc, 2)
+                truck_data['remaining_premium'] = round(remaining_premium, 2)
+                truck_data['remaining_opc'] = round(remaining_opc, 2)
+                truck_data['remaining_total'] = round(remaining_total, 2)
+        
         # Also get vehicles billed on previous days within the month that are still pending
         # (not billed today, not opening balance, but have pending material)
         try:
