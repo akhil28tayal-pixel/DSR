@@ -2572,13 +2572,15 @@ def get_dealer_balance():
         # This allows vehicles like HR58C8562 to show twice: once for Dec 31 pending, once for Jan 1 billing
         for truck, opening_bal in opening_balance_vehicles.items():
             
-            # Get unloading for this truck
-            unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
+            # Get unloading for this truck that was already consumed by current month billings
+            # We need to use the consumed amount to avoid double-counting unloading
+            consumed_unloading = truck_unloading_consumed.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
             
-            # Calculate pending
-            pending_ppc = opening_bal['ppc'] - unloaded['ppc']
-            pending_premium = opening_bal['premium'] - unloaded['premium']
-            pending_opc = opening_bal['opc'] - unloaded['opc']
+            # Calculate pending using only the unloading that was consumed from opening balance
+            # (not the unloading consumed by current month billings)
+            pending_ppc = opening_bal['ppc'] - consumed_unloading['ppc']
+            pending_premium = opening_bal['premium'] - consumed_unloading['premium']
+            pending_opc = opening_bal['opc'] - consumed_unloading['opc']
             
             # Only add if there's pending material
             if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
@@ -2605,9 +2607,9 @@ def get_dealer_balance():
                     'billed_ppc': opening_bal['ppc'],
                     'billed_premium': opening_bal['premium'],
                     'billed_opc': opening_bal['opc'],
-                    'unloaded_ppc': unloaded['ppc'],
-                    'unloaded_premium': unloaded['premium'],
-                    'unloaded_opc': unloaded['opc'],
+                    'unloaded_ppc': consumed_unloading['ppc'],
+                    'unloaded_premium': consumed_unloading['premium'],
+                    'unloaded_opc': consumed_unloading['opc'],
                     'is_manual': False
                 })
         
