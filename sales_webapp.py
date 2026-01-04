@@ -2560,8 +2560,7 @@ def get_dealer_balance():
             dealer_code = row[4]
             last_billing_date = row[5]
             
-            # Check if this vehicle was fully unloaded on selected_date
-            # If so, skip it (don't show in pending list)
+            # Get today's unloading to calculate actual remaining
             cursor.execute('''
                 SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
                 FROM vehicle_unloading
@@ -2572,11 +2571,15 @@ def get_dealer_balance():
             today_unloaded_premium = today_unloading[1] or 0 if today_unloading else 0
             today_unloaded_opc = today_unloading[2] or 0 if today_unloading else 0
             
-            # Skip if vehicle was fully unloaded today (unloading >= pending)
-            if (today_unloaded_ppc >= pending_ppc and 
-                today_unloaded_premium >= pending_premium and 
-                today_unloaded_opc >= pending_opc and
-                (today_unloaded_ppc > 0 or today_unloaded_premium > 0 or today_unloaded_opc > 0)):
+            # Calculate actual remaining after today's unloading
+            # pending_ppc in daily_vehicle_pending is end-of-day pending (after unloading)
+            # We need to show beginning-of-day pending (before unloading)
+            actual_pending_ppc = pending_ppc + today_unloaded_ppc
+            actual_pending_premium = pending_premium + today_unloaded_premium
+            actual_pending_opc = pending_opc + today_unloaded_opc
+            
+            # Skip if no actual pending (fully unloaded before today)
+            if actual_pending_ppc < 0.01 and actual_pending_premium < 0.01 and actual_pending_opc < 0.01:
                 continue
             
             # Get dealer name
@@ -2610,12 +2613,12 @@ def get_dealer_balance():
                 'billed_ppc': billed_ppc,
                 'billed_premium': billed_premium,
                 'billed_opc': billed_opc,
-                'unloaded_ppc': max(0, unloaded_ppc),
-                'unloaded_premium': max(0, unloaded_premium),
-                'unloaded_opc': max(0, unloaded_opc),
-                'pending_ppc': pending_ppc,
-                'pending_premium': pending_premium,
-                'pending_opc': pending_opc,
+                'unloaded_ppc': max(0, unloaded_ppc + today_unloaded_ppc),
+                'unloaded_premium': max(0, unloaded_premium + today_unloaded_premium),
+                'unloaded_opc': max(0, unloaded_opc + today_unloaded_opc),
+                'pending_ppc': actual_pending_ppc,
+                'pending_premium': actual_pending_premium,
+                'pending_opc': actual_pending_opc,
                 'is_manual': False
             })
             pending_vehicles_set.add(truck_number)
