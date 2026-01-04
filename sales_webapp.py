@@ -4067,9 +4067,23 @@ def get_consolidated_vehicles():
             # (includes previous month's closing when no current month data exists)
             pending_data = []
             for truck_number, ob_data in opening_balance_map.items():
+                # Only create opening balance cards for vehicles from PREVIOUS month
+                # Skip vehicles billed in current month (they're handled by earlier_billed_trucks)
+                billing_date_str = ob_data.get('billing_date', 'Previous Month')
+                
+                # Check if billing_date is in current month
+                try:
+                    if billing_date_str and billing_date_str != 'Previous Month' and billing_date_str != 'Previous Day':
+                        billing_dt = datetime.strptime(billing_date_str, '%Y-%m-%d')
+                        # If billing is in same month as selected date, skip (handled by earlier_billed_trucks)
+                        if billing_dt.year == selected_dt.year and billing_dt.month == selected_dt.month:
+                            continue
+                except:
+                    pass
+                
                 pending_data.append((
                     truck_number,
-                    ob_data.get('billing_date', 'Previous Month'),
+                    billing_date_str,
                     ob_data.get('dealer_code'),
                     ob_data.get('ppc', 0),
                     ob_data.get('premium', 0),
