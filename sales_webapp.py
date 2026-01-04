@@ -3502,11 +3502,10 @@ def get_consolidated_vehicles():
                             total_qty = sum(inv['total_quantity'] for inv in pending_invoices)
                             total_val = sum(inv['total_value'] for inv in pending_invoices)
                             
-                            # Use pending from daily_vehicle_pending (already calculated with FIFO)
-                            # This ensures consistency with dealer balance page
-                            card_pending_ppc = pending_ppc
-                            card_pending_premium = pending_premium
-                            card_pending_opc = pending_opc
+                            # Calculate the pending amounts for this card (sum of pending from each invoice)
+                            card_pending_ppc = sum(inv['pending_ppc'] for inv in pending_invoices)
+                            card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
+                            card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
                             # If truck has other_dealers_billing today, merge pending to that card
                             # But if truck has sales_data today, keep them as separate cards
