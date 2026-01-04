@@ -3590,17 +3590,12 @@ def get_consolidated_vehicles():
                                 prev_day_unloading = []
                                 
                                 # Calculate cumulative unloading for this card:
-                                # This is the total unloading from billing_date to selected_date that applies to this billing
-                                # For display purposes only - the remaining calculation uses card_pending directly
-                                cursor.execute('''
-                                    SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
-                                    FROM vehicle_unloading
-                                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                                ''', (truck_number, billing_date, selected_date))
-                                period_unloading = cursor.fetchone()
-                                cumulative_ppc = period_unloading[0] or 0
-                                cumulative_premium = period_unloading[1] or 0
-                                cumulative_opc = period_unloading[2] or 0
+                                # This is used for remaining calculation (FIFO attribution)
+                                # Note: This is already calculated in the FIFO loop above as unloaded_ppc
+                                # We use that value instead of querying again
+                                cumulative_ppc = unloaded_ppc
+                                cumulative_premium = unloaded_premium
+                                cumulative_opc = unloaded_opc
                                 
                                 # Query 2: Get unloading ONLY on the selected_date for display
                                 cursor.execute('''
