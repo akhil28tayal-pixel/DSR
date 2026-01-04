@@ -2290,6 +2290,15 @@ def get_dealer_balance():
             GROUP BY truck_number
         ''', (month_start, selected_date))
         
+        unloading_data = cursor.fetchall()
+        unloading_map_pending = {}
+        for row in unloading_data:
+            unloading_map_pending[row[0]] = {
+                'ppc': row[1] or 0,
+                'premium': row[2] or 0,
+                'opc': row[3] or 0
+            }
+        
         # Also get unloading specifically on the selected date for display purposes
         cursor.execute('''
             SELECT truck_number,
@@ -2301,9 +2310,10 @@ def get_dealer_balance():
             GROUP BY truck_number
         ''', (selected_date,))
         
-        unloading_map_pending = {}
-        for row in cursor.fetchall():
-            unloading_map_pending[row[0]] = {
+        unloading_today_data = cursor.fetchall()
+        unloading_today_map = {}
+        for row in unloading_today_data:
+            unloading_today_map[row[0]] = {
                 'ppc': row[1] or 0,
                 'premium': row[2] or 0,
                 'opc': row[3] or 0
