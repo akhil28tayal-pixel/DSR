@@ -2355,19 +2355,17 @@ def get_dealer_balance():
                     'opc': orow[3] or 0
                 }
                 # Initialize consumed unloading for opening balance
-                # Opening balance from daily_vehicle_pending already accounts for unloading up to prev_date
-                # So we only need to apply unloading on selected_date (today)
                 truck_unloading_consumed[truck] = {'ppc': 0, 'premium': 0, 'opc': 0}
                 
-                # Get unloading for this truck on selected date only
-                unloaded_today = unloading_today_map.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
+                # Get unloading for this truck
+                unloaded = unloading_map_pending.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
                 
-                # Attribute today's unloading to opening balance first (FIFO)
-                opening_unloaded_ppc = min(orow[1] or 0, unloaded_today['ppc'])
-                opening_unloaded_premium = min(orow[2] or 0, unloaded_today['premium'])
-                opening_unloaded_opc = min(orow[3] or 0, unloaded_today['opc'])
+                # Attribute unloading to opening balance first (FIFO)
+                opening_unloaded_ppc = min(orow[1] or 0, unloaded['ppc'])
+                opening_unloaded_premium = min(orow[2] or 0, unloaded['premium'])
+                opening_unloaded_opc = min(orow[3] or 0, unloaded['opc'])
                 
-                # Track consumed unloading (only today's unloading)
+                # Track consumed unloading
                 truck_unloading_consumed[truck] = {
                     'ppc': opening_unloaded_ppc,
                     'premium': opening_unloaded_premium,
