@@ -2290,6 +2290,17 @@ def get_dealer_balance():
             GROUP BY truck_number
         ''', (month_start, selected_date))
         
+        # Also get unloading specifically on the selected date for display purposes
+        cursor.execute('''
+            SELECT truck_number,
+                   SUM(ppc_unloaded) as unloaded_ppc,
+                   SUM(premium_unloaded) as unloaded_premium,
+                   SUM(opc_unloaded) as unloaded_opc
+            FROM vehicle_unloading
+            WHERE unloading_date = ?
+            GROUP BY truck_number
+        ''', (selected_date,))
+        
         unloading_map_pending = {}
         for row in cursor.fetchall():
             unloading_map_pending[row[0]] = {
@@ -2568,8 +2579,8 @@ def get_dealer_balance():
                 })
         
         # Add vehicles from opening_balance_vehicles (previous day pending)
-        # These will show as separate entries even if the vehicle was also billed today
-        # This allows vehicles like HR58C8562 to show twice: once for Dec 31 pending, once for Jan 1 billing
+        # Show these if they have unloading on the selected date OR if they still have pending material
+        # This ensures vehicles appear on the date they are unloaded, not just when billed
         for truck, opening_bal in opening_balance_vehicles.items():
             
             # Get unloading that was consumed from opening balance during initialization
@@ -2582,9 +2593,15 @@ def get_dealer_balance():
             pending_premium = opening_bal['premium'] - consumed_unloading['premium']
             pending_opc = opening_bal['opc'] - consumed_unloading['opc']
             
-            # Only add if there's pending material after unloading
-            # If fully unloaded, don't show the opening balance entry
-            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
+            # Check if this vehicle has unloading on the selected date
+            unloading_today = unloading_today_map.get(truck, {'ppc': 0, 'premium': 0, 'opc': 0})
+            has_unloading_today = (unloading_today['ppc'] > 0.01 or 
+                                  unloading_today['premium'] > 0.01 or 
+                                  unloading_today['opc'] > 0.01)
+            
+            # Show if: (1) has unloading today OR (2) still has pending material
+            # This ensures vehicles appear on the date they are unloaded
+            if has_unloading_today or pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
                 # Get dealer name from daily_vehicle_pending
                 cursor.execute('''
                     SELECT dealer_code
