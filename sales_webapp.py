@@ -3390,14 +3390,14 @@ def get_consolidated_vehicles():
                             fifo_opening_premium = opening_premium
                             fifo_opening_opc = opening_opc
                         
-                        # Get unloading only up to the last billing date in this card
-                        # Not all unloading up to selected_date
+                        # Get unloading from first billing date up to selected date
+                        # This includes unloading that happens after billing
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
                                    COALESCE(SUM(opc_unloaded), 0)
                             FROM vehicle_unloading
                             WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                        ''', (truck_number, first_billing_date, last_billing_date))
+                        ''', (truck_number, first_billing_date, selected_date))
                         card_unloaded = cursor.fetchone()
                         
                         unloaded_ppc = card_unloaded[0] or 0
