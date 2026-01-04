@@ -4104,14 +4104,16 @@ def get_consolidated_vehicles():
                 opc_qty = row[5] or 0
                 total_qty = ppc_qty + premium_qty + opc_qty
                 
-                # Get unloading details for this truck (current month only)
+                # Get unloading details for this truck AFTER the opening balance date
+                # The opening balance already accounts for unloading up to prev_date
+                # So we only need unloading from selected_date onwards (today only)
                 cursor.execute('''
                     SELECT id, truck_number, unloading_dealer, unloading_point, 
                            ppc_unloaded, premium_unloaded, opc_unloaded, unloaded_quantity, 
                            notes, dealer_code, is_other_dealer, unloading_date
                     FROM vehicle_unloading 
-                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                ''', (truck_number, month_start, selected_date))
+                    WHERE truck_number = ? AND unloading_date = ?
+                ''', (truck_number, selected_date))
                 
                 pending_unloading = []
                 for urow in cursor.fetchall():
