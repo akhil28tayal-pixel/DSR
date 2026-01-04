@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 
 # Get the base directory of the application
@@ -2538,7 +2538,6 @@ def get_dealer_balance():
         # This ensures unloading changes are immediately reflected without rebuilding daily_vehicle_pending
         
         # Get month start for the selected date
-        from datetime import datetime, timedelta
         selected_dt = datetime.strptime(selected_date, '%Y-%m-%d')
         month_start = selected_dt.replace(day=1).strftime('%Y-%m-%d')
         
