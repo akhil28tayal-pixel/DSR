@@ -3679,8 +3679,8 @@ def get_consolidated_vehicles():
                                         'card_pending_opc': card_pending_opc
                                     }
         
-        # Now that all cards (including _pending cards) are created, assign unloading
-        assign_unloading_to_cards()
+        # Don't assign unloading yet - need to wait for opening balance cards to be created first
+        # assign_unloading_to_cards() will be called after opening balance cards are added
         
         # Add other_billing quantities to truck totals
         # ONLY for cards that were created from sales_data (not from other_billing_map)
@@ -4202,6 +4202,11 @@ def get_consolidated_vehicles():
         except Exception as e:
             # Table might not exist
             pass
+        
+        # Now that opening balance cards are created, assign unloading to today's cards
+        # This must happen AFTER opening balance cards are added to vehicles_list
+        # so that the FIFO logic can exclude unloading already assigned to opening cards
+        assign_unloading_to_cards()
         
         # Also get vehicles billed on previous days within the month that are still pending
         # (not billed today, not opening balance, but have pending material)
