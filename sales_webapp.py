@@ -3462,15 +3462,30 @@ def get_consolidated_vehicles():
                             fifo_opening_premium = 0
                             fifo_opening_opc = 0
                         
-                        # Get unloading from first billing date up to last billing date in this card
-                        # This ensures each card only accounts for unloading during its billing period
-                        # For FIFO: unloading after the last billing date will be attributed to earlier cards
+                        # Get unloading for FIFO calculation
+                        # If this is the ONLY billing (or latest billing), include all unloading up to selected_date
+                        # If there are multiple billings, only include unloading up to last_billing_date
+                        # Check if there's any billing after last_billing_date
+                        cursor.execute('''
+                            SELECT COUNT(*) FROM (
+                                SELECT sale_date FROM sales_data 
+                                WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
+                                UNION ALL
+                                SELECT sale_date FROM other_dealers_billing 
+                                WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
+                            )
+                        ''', (truck_number, last_billing_date, selected_date, truck_number, last_billing_date, selected_date))
+                        has_later_billing = cursor.fetchone()[0] > 0
+                        
+                        # Use selected_date if no later billing, otherwise use last_billing_date
+                        unloading_end_date = last_billing_date if has_later_billing else selected_date
+                        
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
                                    COALESCE(SUM(opc_unloaded), 0)
                             FROM vehicle_unloading
                             WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-                        ''', (truck_number, first_billing_date, last_billing_date))
+                        ''', (truck_number, first_billing_date, unloading_end_date))
                         card_unloaded = cursor.fetchone()
                         
                         unloaded_ppc = card_unloaded[0] or 0
