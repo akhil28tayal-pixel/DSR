@@ -855,9 +855,10 @@
             let totalPendingPPC = 0, totalPendingPremium = 0, totalPendingOPC = 0;
             
             vehicles.forEach(v => {
-                const pendingPPC = (v.billed_ppc || 0) - (v.unloaded_ppc || 0);
-                const pendingPrem = (v.billed_premium || 0) - (v.unloaded_premium || 0);
-                const pendingOPC = (v.billed_opc || 0) - (v.unloaded_opc || 0);
+                // Use pending values from backend instead of recalculating
+                const pendingPPC = v.pending_ppc || 0;
+                const pendingPrem = v.pending_premium || 0;
+                const pendingOPC = v.pending_opc || 0;
                 
                 if (pendingPPC > 0.01) {
                     ppcVehicles.push({ ...v, pending_qty: pendingPPC, billed_qty: v.billed_ppc, unloaded_qty: v.unloaded_ppc });

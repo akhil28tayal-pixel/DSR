@@ -2583,6 +2583,9 @@ def get_dealer_balance():
                     'unloaded_ppc': max(0, unloaded_ppc),
                     'unloaded_premium': max(0, unloaded_premium),
                     'unloaded_opc': max(0, unloaded_opc),
+                    'pending_ppc': pending_ppc,
+                    'pending_premium': pending_premium,
+                    'pending_opc': pending_opc,
                     'is_manual': False
                 })
         
@@ -2635,6 +2638,9 @@ def get_dealer_balance():
                     'unloaded_ppc': max(0, unloaded_ppc),
                     'unloaded_premium': max(0, unloaded_premium),
                     'unloaded_opc': max(0, unloaded_opc),
+                    'pending_ppc': pending_ppc,
+                    'pending_premium': pending_premium,
+                    'pending_opc': pending_opc,
                     'is_manual': False
                 })
         
@@ -2664,10 +2670,6 @@ def get_dealer_balance():
             'closing_opc': sum(d['closing_opc'] for d in dealers),
             'total_closing': sum(d['closing_total'] for d in dealers)
         }
-        
-        # Debug: Log the number of pending vehicles being returned
-        total_pending_bags = sum(v.get('billed_ppc', 0) * 20 for v in pending_vehicles)
-        print(f"DEBUG: Returning {len(pending_vehicles)} pending vehicles, {total_pending_bags} bags total for date {selected_date}")
         
         return jsonify({
             'success': True,
