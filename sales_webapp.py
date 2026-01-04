@@ -2534,98 +2534,70 @@ def get_dealer_balance():
             except:
                 pass
         
-        # Calculate pending vehicles in real-time from sales_data and vehicle_unloading
-        # This ensures unloading changes are immediately reflected without rebuilding daily_vehicle_pending
+        # Calculate pending vehicles in real-time using daily_vehicle_pending as source
+        # This ensures unloading changes are immediately reflected
         
-        # Get month start for the selected date
-        selected_dt = datetime.strptime(selected_date, '%Y-%m-%d')
-        month_start = selected_dt.replace(day=1).strftime('%Y-%m-%d')
-        
-        # Get all vehicles with billing in current month up to selected date
+        # Simply query daily_vehicle_pending for the selected date
+        # This table is updated by build_daily_vehicle_map.py and reflects real-time unloading
         cursor.execute('''
             SELECT 
-                s.truck_number,
-                MIN(s.sale_date) as first_billing_date,
-                MAX(s.sale_date) as last_billing_date,
-                s.dealer_name,
-                s.dealer_code,
-                SUM(s.ppc_quantity) as total_billed_ppc,
-                SUM(s.premium_quantity) as total_billed_premium,
-                SUM(s.opc_quantity) as total_billed_opc
-            FROM sales_data s
-            WHERE s.sale_date >= ? AND s.sale_date <= ?
-            GROUP BY s.truck_number, s.dealer_name, s.dealer_code
-        ''', (month_start, selected_date))
+                vehicle_number,
+                ppc_qty,
+                premium_qty,
+                opc_qty,
+                dealer_code,
+                last_billing_date
+            FROM daily_vehicle_pending
+            WHERE date = ? AND (ppc_qty > 0.01 OR premium_qty > 0.01 OR opc_qty > 0.01)
+        ''', (selected_date,))
         
-        billing_data = cursor.fetchall()
-        
-        for row in billing_data:
+        for row in cursor.fetchall():
             truck_number = row[0]
-            first_billing_date = row[1]
-            last_billing_date = row[2]
-            dealer_name = row[3]
+            pending_ppc = row[1] or 0
+            pending_premium = row[2] or 0
+            pending_opc = row[3] or 0
             dealer_code = row[4]
-            month_billed_ppc = row[5] or 0
-            month_billed_premium = row[6] or 0
-            month_billed_opc = row[7] or 0
+            last_billing_date = row[5]
             
-            # Get opening balance from previous month (if exists in daily_vehicle_pending)
-            prev_month_end = (selected_dt.replace(day=1) - timedelta(days=1)).strftime('%Y-%m-%d')
+            # Get dealer name
+            cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
+            dn_row = cursor.fetchone()
+            dealer_name = dn_row[0] if dn_row else f'Dealer {dealer_code}'
+            
+            # Get total billed for this vehicle (from its last billing date)
             cursor.execute('''
-                SELECT ppc_qty, premium_qty, opc_qty
-                FROM daily_vehicle_pending
-                WHERE vehicle_number = ? AND date = ?
-            ''', (truck_number, prev_month_end))
+                SELECT SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
+                FROM sales_data
+                WHERE truck_number = ? AND sale_date = ?
+            ''', (truck_number, last_billing_date))
+            billed_row = cursor.fetchone()
+            billed_ppc = billed_row[0] or 0 if billed_row else pending_ppc
+            billed_premium = billed_row[1] or 0 if billed_row else pending_premium
+            billed_opc = billed_row[2] or 0 if billed_row else pending_opc
             
-            opening_row = cursor.fetchone()
-            opening_ppc = opening_row[0] if opening_row else 0
-            opening_premium = opening_row[1] if opening_row else 0
-            opening_opc = opening_row[2] if opening_row else 0
+            # Calculate unloaded as billed - pending
+            unloaded_ppc = billed_ppc - pending_ppc
+            unloaded_premium = billed_premium - pending_premium
+            unloaded_opc = billed_opc - pending_opc
             
-            # Get total unloaded in current month up to selected date
-            cursor.execute('''
-                SELECT 
-                    SUM(ppc_unloaded),
-                    SUM(premium_unloaded),
-                    SUM(opc_unloaded)
-                FROM vehicle_unloading
-                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-            ''', (truck_number, month_start, selected_date))
+            # Determine billing date to display
+            display_billing_date = last_billing_date if last_billing_date == selected_date else 'Previous Day'
             
-            unload_row = cursor.fetchone()
-            month_unloaded_ppc = unload_row[0] or 0
-            month_unloaded_premium = unload_row[1] or 0
-            month_unloaded_opc = unload_row[2] or 0
-            
-            # Calculate pending: opening + month_billed - month_unloaded
-            pending_ppc = opening_ppc + month_billed_ppc - month_unloaded_ppc
-            pending_premium = opening_premium + month_billed_premium - month_unloaded_premium
-            pending_opc = opening_opc + month_billed_opc - month_unloaded_opc
-            
-            # Only show if there's pending material
-            if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01:
-                # Determine billing date to display
-                display_billing_date = last_billing_date if last_billing_date == selected_date else 'Previous Day'
-                
-                # For display, show total billed and unloaded (opening + month)
-                total_billed_ppc = opening_ppc + month_billed_ppc
-                total_unloaded_ppc = month_unloaded_ppc
-                
-                pending_vehicles.append({
-                    'truck_number': truck_number,
-                    'billing_date': display_billing_date,
-                    'dealer_name': dealer_name,
-                    'billed_ppc': month_billed_ppc,
-                    'billed_premium': month_billed_premium,
-                    'billed_opc': month_billed_opc,
-                    'unloaded_ppc': month_unloaded_ppc,
-                    'unloaded_premium': month_unloaded_premium,
-                    'unloaded_opc': month_unloaded_opc,
-                    'pending_ppc': pending_ppc,
-                    'pending_premium': pending_premium,
-                    'pending_opc': pending_opc,
-                    'is_manual': False
-                })
+            pending_vehicles.append({
+                'truck_number': truck_number,
+                'billing_date': display_billing_date,
+                'dealer_name': dealer_name,
+                'billed_ppc': billed_ppc,
+                'billed_premium': billed_premium,
+                'billed_opc': billed_opc,
+                'unloaded_ppc': max(0, unloaded_ppc),
+                'unloaded_premium': max(0, unloaded_premium),
+                'unloaded_opc': max(0, unloaded_opc),
+                'pending_ppc': pending_ppc,
+                'pending_premium': pending_premium,
+                'pending_opc': pending_opc,
+                'is_manual': False
+            })
         
         # Old logic removed - we now use daily_vehicle_pending above (lines 2570-2617)
         
