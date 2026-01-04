@@ -3539,6 +3539,9 @@ def get_consolidated_vehicles():
                             card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
+                            if truck_number == 'HR38AB5491':
+                                print(f"DEBUG HR38AB5491 CARD CREATE: card_pending_ppc={card_pending_ppc}, total_ppc={total_ppc}, unloaded_ppc={unloaded_ppc}")
+                            
                             # If truck has other_dealers_billing today, merge pending to that card
                             # But if truck has sales_data today, keep them as separate cards
                             merged_to_existing = False
