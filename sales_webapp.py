@@ -2560,6 +2560,25 @@ def get_dealer_balance():
             dealer_code = row[4]
             last_billing_date = row[5]
             
+            # Check if this vehicle was fully unloaded on selected_date
+            # If so, skip it (don't show in pending list)
+            cursor.execute('''
+                SELECT SUM(ppc_unloaded), SUM(premium_unloaded), SUM(opc_unloaded)
+                FROM vehicle_unloading
+                WHERE truck_number = ? AND unloading_date = ?
+            ''', (truck_number, selected_date))
+            today_unloading = cursor.fetchone()
+            today_unloaded_ppc = today_unloading[0] or 0 if today_unloading else 0
+            today_unloaded_premium = today_unloading[1] or 0 if today_unloading else 0
+            today_unloaded_opc = today_unloading[2] or 0 if today_unloading else 0
+            
+            # Skip if vehicle was fully unloaded today (unloading >= pending)
+            if (today_unloaded_ppc >= pending_ppc and 
+                today_unloaded_premium >= pending_premium and 
+                today_unloaded_opc >= pending_opc and
+                (today_unloaded_ppc > 0 or today_unloaded_premium > 0 or today_unloaded_opc > 0)):
+                continue
+            
             # Get dealer name
             cursor.execute('SELECT dealer_name FROM sales_data WHERE dealer_code = ? LIMIT 1', (dealer_code,))
             dn_row = cursor.fetchone()
