@@ -3218,28 +3218,44 @@ def get_consolidated_vehicles():
                 if card_key.endswith('_pending'):
                     continue
                 
-                # Check if this truck has a "_pending" card (previous day pending)
+                # Check if this truck has a "_pending" card (previous day pending) OR an "_OPENING" card
                 pending_card_key = None
                 for ck in trucks_today.keys():
                     if ck.endswith('_pending') and trucks_today[ck]['truck_number'] == truck_number:
                         pending_card_key = ck
                         break
                 
-                # If this card is today's billing and there's a pending card, assign unloading
-                # that wasn't already assigned to the pending card (FIFO logic)
-                if pending_card_key:
-                    pending_card = trucks_today[pending_card_key]
-                    # Get the IDs of unloading records assigned to the pending card
-                    pending_card_unloading_ids = set(u.get('id') for u in pending_card.get('unloading_details', []))
+                # Also check if this truck has an opening balance card in vehicles_list
+                has_opening_card = False
+                opening_card_unloading_ids = set()
+                for v in vehicles_list:
+                    display_truck = v.get('display_truck_number', v.get('truck_number', ''))
+                    if display_truck.endswith('_OPENING'):
+                        display_truck = display_truck[:-8]
+                    if display_truck == truck_number and v.get('is_opening_vehicle', False):
+                        has_opening_card = True
+                        # Get IDs of unloading assigned to opening card
+                        for u in v.get('unloading_details', []):
+                            opening_card_unloading_ids.add(u.get('id'))
+                        break
+                
+                # If this card is today's billing and there's a pending/opening card, assign unloading
+                # that wasn't already assigned to the pending/opening card (FIFO logic)
+                if pending_card_key or has_opening_card:
+                    # Combine unloading IDs from both pending card and opening card
+                    excluded_unloading_ids = opening_card_unloading_ids.copy()
+                    if pending_card_key:
+                        pending_card = trucks_today[pending_card_key]
+                        # Get the IDs of unloading records assigned to the pending card
+                        pending_card_unloading_ids = set(u.get('id') for u in pending_card.get('unloading_details', []))
+                        excluded_unloading_ids.update(pending_card_unloading_ids)
                     
-                    # For Today cards, only assign unloading from the selected date
-                    # Historical unloading should be consumed by Prev Day card via FIFO
+                    # For Today cards, only assign unloading NOT already assigned to pending/opening cards
+                    # This implements FIFO: opening balance consumes unloading first
                     today_card_unloading = []
                     for unload in all_unloading:
-                        # Only include unloading from selected date (today)
-                        # AND not already assigned to pending card
-                        if (unload.get('unloading_date') == selected_date and 
-                            unload.get('id') not in pending_card_unloading_ids):
+                        # Only include unloading NOT already assigned to pending/opening card
+                        if unload.get('id') not in excluded_unloading_ids:
                             today_card_unloading.append(transform_unloading_record(unload))
                     
                     truck_data['unloading_details'] = today_card_unloading
