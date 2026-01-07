@@ -953,59 +953,6 @@ def whatsapp_generator():
     """WhatsApp message generator page"""
     return render_template('whatsapp_generator.html')
 
-@app.route('/get_dealer_balance', methods=['POST'])
-def get_dealer_balance():
-    """Get dealer balance summary for a specific date"""
-    try:
-        # Run build_daily_vehicle_map to ensure data is up to date
-        import subprocess
-        try:
-            subprocess.run(
-                ['python3', 'build_daily_vehicle_map.py'],
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-                capture_output=True,
-                timeout=60
-            )
-        except Exception as e:
-            app.logger.warning(f"Failed to run build_daily_vehicle_map.py: {e}")
-        
-        data = request.get_json()
-        selected_date = data.get('date')
-        
-        if not selected_date:
-            return jsonify({'success': False, 'message': 'Date is required'})
-        
-        db = SalesCollectionsDatabase(DB_PATH)
-        cursor = db.conn.cursor()
-        
-        # Get dealers who had sales on the selected date
-        cursor.execute('''
-            SELECT DISTINCT dealer_code, dealer_name, COUNT(*) as invoice_count
-            FROM sales_data 
-            WHERE sale_date = ?
-            GROUP BY dealer_code, dealer_name
-            ORDER BY dealer_name
-        ''', (selected_date,))
-        
-        dealers = []
-        for row in cursor.fetchall():
-            dealers.append({
-                'dealer_code': row[0],
-                'dealer_name': row[1],
-                'invoice_count': row[2]
-            })
-        
-        db.close()
-        
-        return jsonify({
-            'success': True,
-            'dealers': dealers,
-            'date': selected_date
-        })
-        
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
-
 @app.route('/get_dealers_for_date', methods=['POST'])
 def get_dealers_for_date():
     """Get list of dealers who had billing on a specific date"""
