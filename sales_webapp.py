@@ -3488,11 +3488,11 @@ def get_consolidated_vehicles():
                             # No later billing, include all unloading up to selected_date
                             unloading_end_date = selected_date
                         
-                        if truck_number == 'HR38AB5491':
-                            app.logger.info(f"DEBUG HR38AB5491: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
+                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                            app.logger.info(f"DEBUG {truck_number}: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
                         
-                        if truck_number == 'HR38AB5491':
-                            app.logger.info(f"DEBUG HR38AB5491 BEFORE QUERY: first_billing_date={first_billing_date}, unloading_end_date={unloading_end_date}")
+                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                            app.logger.info(f"DEBUG {truck_number} BEFORE QUERY: first_billing_date={first_billing_date}, unloading_end_date={unloading_end_date}")
                         
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
@@ -3504,8 +3504,8 @@ def get_consolidated_vehicles():
                         
                         unloaded_ppc = card_unloaded[0] or 0
                         
-                        if truck_number == 'HR38AB5491':
-                            app.logger.info(f"DEBUG HR38AB5491 AFTER QUERY: unloaded_ppc={unloaded_ppc}")
+                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                            app.logger.info(f"DEBUG {truck_number} AFTER QUERY: unloaded_ppc={unloaded_ppc}")
                         unloaded_premium = card_unloaded[1] or 0
                         unloaded_opc = card_unloaded[2] or 0
                         
@@ -3518,8 +3518,8 @@ def get_consolidated_vehicles():
                         remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
                         remaining_to_consume_opc = unloaded_opc - consume_from_opening_opc
                         
-                        if truck_number == 'HR38AB5491':
-                            app.logger.info(f"DEBUG HR38AB5491 FIFO: fifo_opening_ppc={fifo_opening_ppc}, unloaded_ppc={unloaded_ppc}, remaining_to_consume_ppc={remaining_to_consume_ppc}")
+                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                            app.logger.info(f"DEBUG {truck_number} FIFO: fifo_opening_ppc={fifo_opening_ppc}, unloaded_ppc={unloaded_ppc}, remaining_to_consume_ppc={remaining_to_consume_ppc}")
                         
                         # Now consume invoices in FIFO order (by date) until we've consumed enough
                         # billing_rows is already sorted by date ASC
@@ -3647,8 +3647,8 @@ def get_consolidated_vehicles():
                             card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
-                            if truck_number == 'HR38AB5491':
-                                app.logger.info(f"DEBUG HR38AB5491 CARD CREATE: card_pending_ppc={card_pending_ppc}, total_ppc={total_ppc}, unloaded_ppc={unloaded_ppc}")
+                            if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                                app.logger.info(f"DEBUG {truck_number} CARD CREATE: card_pending_ppc={card_pending_ppc}, total_ppc={total_ppc}, unloaded_ppc={unloaded_ppc}, last_pending_date={last_pending_date}")
                             
                             # If truck has other_dealers_billing today, merge pending to that card
                             # But if truck has sales_data today, keep them as separate cards
@@ -3761,8 +3761,8 @@ def get_consolidated_vehicles():
                                 has_unloading = len(prev_day_unloading) > 0
                                 
                                 if has_pending or has_unloading:
-                                    if truck_number == 'HR38AB5491':
-                                        app.logger.info(f"DEBUG HR38AB5491 STORING: cumulative_ppc={cumulative_ppc}, cumulative_unloaded_ppc will be={cumulative_ppc}")
+                                    if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                                        app.logger.info(f"DEBUG {truck_number} STORING: cumulative_ppc={cumulative_ppc}, last_pending_date={last_pending_date}, card_pending_ppc={card_pending_ppc}")
                                     trucks_today[card_key] = {
                                         'truck_number': truck_number,
                                         'card_key': card_key,
@@ -4052,12 +4052,12 @@ def get_consolidated_vehicles():
                 card_pending_premium_val = truck_data.get('card_pending_premium', 0)
                 card_pending_opc_val = truck_data.get('card_pending_opc', 0)
                 
-                # For Prev Day cards, use cumulative unloading (from billing date to selected date)
-                # This accounts for all unloading, not just today's
-                # Remaining = Total Billed - Cumulative Unloading
-                remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
-                remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
-                remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
+                # For Prev Day cards, use the FIFO-calculated card_pending values
+                # These already account for all unloading from billing date to selected date
+                # and correctly attribute unloading across multiple billing dates
+                remaining_ppc = card_pending_ppc_val
+                remaining_premium = card_pending_premium_val
+                remaining_opc = card_pending_opc_val
             else:
                 # For today's cards, use the global_pending calculated earlier with FIFO logic
                 # This accounts for future billing and limits unloading appropriately
