@@ -4052,17 +4052,12 @@ def get_consolidated_vehicles():
                 card_pending_premium_val = truck_data.get('card_pending_premium', 0)
                 card_pending_opc_val = truck_data.get('card_pending_opc', 0)
                 
-                # For Prev Day cards, the unloading_details only shows today's unloading
-                # So we calculate remaining as: Total Billed - Unloading Shown on Card
-                # This ensures consistency between what's displayed and the remaining value
-                today_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                today_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                today_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                
-                # Remaining = Total Billed - Unloading Shown
-                remaining_ppc = max(0, truck_data.get('total_ppc', 0) - today_unloaded_ppc)
-                remaining_premium = max(0, truck_data.get('total_premium', 0) - today_unloaded_premium)
-                remaining_opc = max(0, truck_data.get('total_opc', 0) - today_unloaded_opc)
+                # For Prev Day cards, use cumulative unloading (from billing date to selected date)
+                # This accounts for all unloading, not just today's
+                # Remaining = Total Billed - Cumulative Unloading
+                remaining_ppc = max(0, truck_data.get('total_ppc', 0) - card_unloaded_ppc)
+                remaining_premium = max(0, truck_data.get('total_premium', 0) - card_unloaded_premium)
+                remaining_opc = max(0, truck_data.get('total_opc', 0) - card_unloaded_opc)
             else:
                 # For today's cards, use the global_pending calculated earlier with FIFO logic
                 # This accounts for future billing and limits unloading appropriately
