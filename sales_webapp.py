@@ -3536,10 +3536,52 @@ def get_consolidated_vehicles():
                                 (card_has_opc and next_has_opc)
                             )
                         
-                        # Always use FIFO: unloading consumes oldest billing first
-                        # This applies even when there's new billing on the same day
-                        # The unloading happens before new billing is considered
-                        unloading_end_date = selected_date
+                        # Determine unloading_end_date:
+                        # If there's new billing on selected_date with same products, check if previous billing
+                        # would be fully consumed by unloading up to day before selected_date
+                        # If yes, stop at day before (remaining unloading goes to new billing)
+                        # If no, include selected_date (FIFO - unloading consumes previous billing first)
+                        if next_billing_date and next_billing_date == selected_date and next_billing_has_same_products:
+                            # Check if previous billing would be fully consumed by unloading up to day before
+                            day_before_selected = (datetime.strptime(selected_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+                            
+                            # Calculate total billing for this card
+                            total_billed_ppc = sum(row[5] or 0 for row in billing_rows)
+                            total_billed_premium = sum(row[6] or 0 for row in billing_rows)
+                            total_billed_opc = sum(row[7] or 0 for row in billing_rows)
+                            
+                            # Calculate unloading up to day before selected_date
+                            cursor.execute('''
+                                SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
+                                       COALESCE(SUM(opc_unloaded), 0)
+                                FROM vehicle_unloading
+                                WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                            ''', (truck_number, first_billing_date, day_before_selected))
+                            unloading_before = cursor.fetchone()
+                            unloaded_before_ppc = unloading_before[0] or 0
+                            unloaded_before_premium = unloading_before[1] or 0
+                            unloaded_before_opc = unloading_before[2] or 0
+                            
+                            # Subtract opening balance from unloading (opening balance is consumed first in FIFO)
+                            # Only the remaining unloading after opening balance affects this card's billing
+                            remaining_unloading_ppc = max(0, unloaded_before_ppc - fifo_opening_ppc)
+                            remaining_unloading_premium = max(0, unloaded_before_premium - fifo_opening_premium)
+                            remaining_unloading_opc = max(0, unloaded_before_opc - fifo_opening_opc)
+                            
+                            # Check if any product type would still have pending after unloading up to day before
+                            has_pending_ppc = (card_has_ppc and total_billed_ppc > remaining_unloading_ppc + 0.01)
+                            has_pending_premium = (card_has_premium and total_billed_premium > remaining_unloading_premium + 0.01)
+                            has_pending_opc = (card_has_opc and total_billed_opc > remaining_unloading_opc + 0.01)
+                            
+                            if has_pending_ppc or has_pending_premium or has_pending_opc:
+                                # Previous billing still has pending - include selected_date for FIFO
+                                unloading_end_date = selected_date
+                            else:
+                                # Previous billing fully consumed - stop at day before
+                                unloading_end_date = day_before_selected
+                        else:
+                            # No same-day billing with same products - always include selected_date
+                            unloading_end_date = selected_date
                         
                         if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
                             app.logger.info(f"DEBUG {truck_number}: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
