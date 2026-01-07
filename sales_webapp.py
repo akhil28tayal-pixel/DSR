@@ -5095,6 +5095,19 @@ def save_vehicle_unloading():
         db.conn.commit()
         db.close()
         
+        # Run pending vehicle script to update daily_vehicle_pending table
+        import subprocess
+        import os
+        script_path = os.path.join(os.path.dirname(__file__), 'build_daily_vehicle_map.py')
+        try:
+            print(f"Running pending vehicle script after unloading save: {script_path}")
+            subprocess.run(['python3', script_path], 
+                         capture_output=True, 
+                         text=True, 
+                         timeout=60)
+        except Exception as e:
+            print(f"Error running pending vehicle script: {e}")
+        
         return jsonify({
             'success': True,
             'message': 'Unloading details saved successfully'
@@ -5113,6 +5126,19 @@ def delete_unloading(unloading_id):
         cursor.execute('DELETE FROM vehicle_unloading WHERE id = ?', (unloading_id,))
         db.conn.commit()
         db.close()
+        
+        # Run pending vehicle script to update daily_vehicle_pending table
+        import subprocess
+        import os
+        script_path = os.path.join(os.path.dirname(__file__), 'build_daily_vehicle_map.py')
+        try:
+            print(f"Running pending vehicle script after unloading delete: {script_path}")
+            subprocess.run(['python3', script_path], 
+                         capture_output=True, 
+                         text=True, 
+                         timeout=60)
+        except Exception as e:
+            print(f"Error running pending vehicle script: {e}")
         
         return jsonify({'success': True, 'message': 'Unloading record deleted'})
         
