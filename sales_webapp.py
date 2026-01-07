@@ -3491,6 +3491,9 @@ def get_consolidated_vehicles():
                         if truck_number == 'HR38AB5491':
                             app.logger.info(f"DEBUG HR38AB5491: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
                         
+                        if truck_number == 'HR38AB5491':
+                            app.logger.info(f"DEBUG HR38AB5491 BEFORE QUERY: first_billing_date={first_billing_date}, unloading_end_date={unloading_end_date}")
+                        
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
                                    COALESCE(SUM(opc_unloaded), 0)
@@ -3502,7 +3505,7 @@ def get_consolidated_vehicles():
                         unloaded_ppc = card_unloaded[0] or 0
                         
                         if truck_number == 'HR38AB5491':
-                            app.logger.info(f"DEBUG HR38AB5491 UNLOADED: unloaded_ppc={unloaded_ppc}, query range: {first_billing_date} to {unloading_end_date}")
+                            app.logger.info(f"DEBUG HR38AB5491 AFTER QUERY: unloaded_ppc={unloaded_ppc}")
                         unloaded_premium = card_unloaded[1] or 0
                         unloaded_opc = card_unloaded[2] or 0
                         
