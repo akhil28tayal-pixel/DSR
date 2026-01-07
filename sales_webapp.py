@@ -3726,16 +3726,16 @@ def get_consolidated_vehicles():
                             
                             # Skip creating new card if merged to existing
                             if not merged_to_existing:
-                                # Don't create Prev Day card if no actual pending AND no unloading on selected date
+                                # Don't create Prev Day card if no actual pending AND no unloading in card's date range
                                 # This prevents showing fully unloaded cards from previous days
-                                # BUT we still show cards with unloading today even if pending=0
+                                # BUT we still show cards with unloading in the card's date range even if pending=0
                                 has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
                                 
-                                # Check if there's unloading on selected date for this vehicle
+                                # Check if there's unloading within the card's date range
                                 cursor.execute('''
                                     SELECT COUNT(*) FROM vehicle_unloading
-                                    WHERE truck_number = ? AND unloading_date = ?
-                                ''', (truck_number, selected_date))
+                                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
+                                ''', (truck_number, first_billing_date, unloading_end_date))
                                 has_unloading_on_selected_date = cursor.fetchone()[0] > 0
                                 
                                 if not has_any_pending and not has_unloading_on_selected_date:
@@ -3755,13 +3755,14 @@ def get_consolidated_vehicles():
                                 cumulative_premium = unloaded_premium
                                 cumulative_opc = unloaded_opc
                                 
-                                # Query 2: Get unloading ONLY on the selected_date for display
+                                # Query 2: Get unloading within the card's date range for display
+                                # Use unloading_end_date to ensure we only show unloading attributed to this card
                                 cursor.execute('''
                                     SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
                                     FROM vehicle_unloading
-                                    WHERE truck_number = ? AND unloading_date = ?
+                                    WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
                                     ORDER BY unloading_date ASC
-                                ''', (truck_number, selected_date))
+                                ''', (truck_number, first_billing_date, unloading_end_date))
                                 
                                 historical_unloading = cursor.fetchall()
                                 
