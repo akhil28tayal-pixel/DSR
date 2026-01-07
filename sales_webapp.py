@@ -1688,6 +1688,25 @@ def get_dealer_balance():
         if not selected_date:
             return jsonify({'success': False, 'message': 'Date is required'})
         
+        # Run pending vehicle script to update daily_vehicle_pending table
+        import subprocess
+        import os
+        script_path = os.path.join(os.path.dirname(__file__), 'build_daily_vehicle_map.py')
+        try:
+            print(f"Running pending vehicle script: {script_path}")
+            result = subprocess.run(['python3', script_path], 
+                                  capture_output=True, 
+                                  text=True, 
+                                  timeout=60)
+            if result.returncode == 0:
+                print("Pending vehicle script completed successfully")
+            else:
+                print(f"Pending vehicle script error: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            print("Pending vehicle script timed out after 60 seconds")
+        except Exception as e:
+            print(f"Error running pending vehicle script: {e}")
+        
         db = SalesCollectionsDatabase(DB_PATH)
         cursor = db.conn.cursor()
         
