@@ -3849,15 +3849,39 @@ def get_consolidated_vehicles():
             global_billed_premium = (total_billing[1] or 0) + (other_billing[1] or 0) + opening_premium
             global_billed_opc = (total_billing[2] or 0) + (other_billing[2] or 0) + opening_opc
             
+            # Check if there's any billing after selected_date for this truck
+            # If yes, limit unloading to the day before the next billing
+            # If no, include all unloading up to selected_date
+            cursor.execute('''
+                SELECT MIN(sale_date) FROM (
+                    SELECT sale_date FROM sales_data 
+                    WHERE truck_number = ? AND sale_date > ?
+                    UNION ALL
+                    SELECT sale_date FROM other_dealers_billing 
+                    WHERE truck_number = ? AND sale_date > ?
+                )
+            ''', (truck_number, selected_date, truck_number, selected_date))
+            next_billing_date_for_card = cursor.fetchone()[0]
+            
+            if next_billing_date_for_card:
+                # There's a later billing, so limit unloading to the day before next billing
+                unloading_end_date_for_card = (datetime.strptime(next_billing_date_for_card, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+            else:
+                # No later billing, include all unloading up to selected_date
+                unloading_end_date_for_card = selected_date
+            
             cursor.execute('''
                 SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), COALESCE(SUM(opc_unloaded), 0)
                 FROM vehicle_unloading
                 WHERE truck_number = ? AND unloading_date >= ? AND unloading_date <= ?
-            ''', (truck_number, month_start, selected_date))
+            ''', (truck_number, month_start, unloading_end_date_for_card))
             total_unloading = cursor.fetchone()
             global_unloaded_ppc = total_unloading[0] or 0
             global_unloaded_premium = total_unloading[1] or 0
             global_unloaded_opc = total_unloading[2] or 0
+            
+            if truck_number == 'HR38AB5491':
+                app.logger.info(f"DEBUG HR38AB5491 CARD REMAINING: selected_date={selected_date}, next_billing={next_billing_date_for_card}, unloading_end={unloading_end_date_for_card}, global_unloaded_ppc={global_unloaded_ppc}")
             
             # Global pending for this truck
             global_pending_ppc = max(0, global_billed_ppc - global_unloaded_ppc)
