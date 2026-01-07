@@ -204,16 +204,16 @@ def build_daily_map():
                 new_balances[vehicle]['premium'] = max(0, new_balances[vehicle]['premium'])
                 new_balances[vehicle]['opc'] = max(0, new_balances[vehicle]['opc'])
         
-        # Save today's balances (only vehicles with pending > 0)
+        # Save today's balances (save all vehicles, including those with 0 pending)
+        # This ensures vehicles that become fully unloaded are properly recorded as 0
         for vehicle, balance in new_balances.items():
             total = balance['ppc'] + balance['premium'] + balance['opc']
-            if total > 0.01:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO daily_vehicle_pending 
-                    (date, vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (date, vehicle, balance['ppc'], balance['premium'], balance['opc'], 
-                      balance['dealer_code'], balance['last_billing_date']))
+            cursor.execute("""
+                INSERT OR REPLACE INTO daily_vehicle_pending 
+                (date, vehicle_number, ppc_qty, premium_qty, opc_qty, dealer_code, last_billing_date, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (date, vehicle, balance['ppc'], balance['premium'], balance['opc'], 
+                  balance['dealer_code'], balance['last_billing_date']))
         
         conn.commit()
         print(f"Processed {date}: {len([v for v in new_balances.values() if v['ppc'] + v['premium'] + v['opc'] > 0.01])} vehicles pending")
