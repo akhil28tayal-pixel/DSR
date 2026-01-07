@@ -3481,17 +3481,19 @@ def get_consolidated_vehicles():
                         ''', (truck_number, last_billing_date, truck_number, last_billing_date))
                         next_billing_date = cursor.fetchone()[0]
                         
-                        if next_billing_date:
-                            # There's a later billing, so limit unloading to the day before next billing
+                        if next_billing_date and next_billing_date < selected_date:
+                            # There's a later billing before selected date
+                            # Include unloading up to the day before next billing
                             unloading_end_date = (datetime.strptime(next_billing_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
                         else:
-                            # No later billing, include all unloading up to selected_date
+                            # No later billing, or later billing is on/after selected date
+                            # Include all unloading up to selected_date (including today's unloading)
                             unloading_end_date = selected_date
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569']:
                             app.logger.info(f"DEBUG {truck_number}: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569']:
                             app.logger.info(f"DEBUG {truck_number} BEFORE QUERY: first_billing_date={first_billing_date}, unloading_end_date={unloading_end_date}")
                         
                         cursor.execute('''
@@ -3504,7 +3506,7 @@ def get_consolidated_vehicles():
                         
                         unloaded_ppc = card_unloaded[0] or 0
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569']:
                             app.logger.info(f"DEBUG {truck_number} AFTER QUERY: unloaded_ppc={unloaded_ppc}")
                         unloaded_premium = card_unloaded[1] or 0
                         unloaded_opc = card_unloaded[2] or 0
@@ -3518,7 +3520,7 @@ def get_consolidated_vehicles():
                         remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
                         remaining_to_consume_opc = unloaded_opc - consume_from_opening_opc
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569']:
                             app.logger.info(f"DEBUG {truck_number} FIFO: fifo_opening_ppc={fifo_opening_ppc}, unloaded_ppc={unloaded_ppc}, remaining_to_consume_ppc={remaining_to_consume_ppc}")
                         
                         # Now consume invoices in FIFO order (by date) until we've consumed enough
@@ -3647,7 +3649,7 @@ def get_consolidated_vehicles():
                             card_pending_premium = sum(inv['pending_premium'] for inv in pending_invoices)
                             card_pending_opc = sum(inv['pending_opc'] for inv in pending_invoices)
                             
-                            if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                            if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569']:
                                 app.logger.info(f"DEBUG {truck_number} CARD CREATE: card_pending_ppc={card_pending_ppc}, total_ppc={total_ppc}, unloaded_ppc={unloaded_ppc}, last_pending_date={last_pending_date}")
                             
                             # If truck has other_dealers_billing today, merge pending to that card
@@ -3761,7 +3763,7 @@ def get_consolidated_vehicles():
                                 has_unloading = len(prev_day_unloading) > 0
                                 
                                 if has_pending or has_unloading:
-                                    if truck_number in ['HR38AB5491', 'HR38AB3916']:
+                                    if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569']:
                                         app.logger.info(f"DEBUG {truck_number} STORING: cumulative_ppc={cumulative_ppc}, last_pending_date={last_pending_date}, card_pending_ppc={card_pending_ppc}")
                                     trucks_today[card_key] = {
                                         'truck_number': truck_number,
