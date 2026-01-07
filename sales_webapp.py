@@ -3488,6 +3488,9 @@ def get_consolidated_vehicles():
                             # No later billing, include all unloading up to selected_date
                             unloading_end_date = selected_date
                         
+                        if truck_number == 'HR38AB5491':
+                            app.logger.info(f"DEBUG HR38AB5491: selected_date={selected_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
+                        
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
                                    COALESCE(SUM(opc_unloaded), 0)
