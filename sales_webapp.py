@@ -3520,22 +3520,26 @@ def get_consolidated_vehicles():
                             fifo_opening_opc = 0
                         
                         # Get unloading for FIFO calculation
-                        # If this is the ONLY billing (or latest billing), include all unloading up to selected_date
-                        # If there are multiple billings, only include unloading up to last_billing_date
-                        # Check if there's any billing after last_billing_date
+                        # Check if there's any billing after last_billing_date (regardless of selected_date)
+                        # If yes, limit unloading to the day before the next billing
+                        # If no, include all unloading up to selected_date
                         cursor.execute('''
-                            SELECT COUNT(*) FROM (
+                            SELECT MIN(sale_date) FROM (
                                 SELECT sale_date FROM sales_data 
-                                WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
+                                WHERE truck_number = ? AND sale_date > ?
                                 UNION ALL
                                 SELECT sale_date FROM other_dealers_billing 
-                                WHERE truck_number = ? AND sale_date > ? AND sale_date <= ?
+                                WHERE truck_number = ? AND sale_date > ?
                             )
-                        ''', (truck_number, last_billing_date, selected_date, truck_number, last_billing_date, selected_date))
-                        has_later_billing = cursor.fetchone()[0] > 0
+                        ''', (truck_number, last_billing_date, truck_number, last_billing_date))
+                        next_billing_date = cursor.fetchone()[0]
                         
-                        # Use selected_date if no later billing, otherwise use last_billing_date
-                        unloading_end_date = last_billing_date if has_later_billing else selected_date
+                        if next_billing_date:
+                            # There's a later billing, so limit unloading to the day before next billing
+                            unloading_end_date = (datetime.strptime(next_billing_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+                        else:
+                            # No later billing, include all unloading up to selected_date
+                            unloading_end_date = selected_date
                         
                         cursor.execute('''
                             SELECT COALESCE(SUM(ppc_unloaded), 0), COALESCE(SUM(premium_unloaded), 0), 
