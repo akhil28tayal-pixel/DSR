@@ -3545,7 +3545,7 @@ def get_consolidated_vehicles():
                             # Include all unloading up to selected_date
                             unloading_end_date = selected_date
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
                             app.logger.info(f"DEBUG {truck_number}: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
                         
                         if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649']:
