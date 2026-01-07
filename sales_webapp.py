@@ -4086,16 +4086,14 @@ def get_consolidated_vehicles():
                     # Normal FIFO pending - subtract today's unloading from card_pending
                     remaining_opc = max(0, card_pending_opc_val - today_unloaded_opc)
             else:
-                # For today's cards, use simple calculation like dealer balance page:
-                # Remaining = Today's Billed - Today's Unloaded (no complex FIFO)
-                # Get today's unloaded from unloading_details
-                today_unloaded_ppc = sum(u.get('ppc_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                today_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
-                today_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
+                # For today's cards, use the global_pending calculated earlier with FIFO logic
+                # This accounts for future billing and limits unloading appropriately
+                remaining_ppc = total_pending_ppc
+                remaining_premium = total_pending_premium
+                remaining_opc = total_pending_opc
                 
-                remaining_ppc = max(0, truck_data['total_ppc'] - today_unloaded_ppc)
-                remaining_premium = max(0, truck_data['total_premium'] - today_unloaded_premium)
-                remaining_opc = max(0, truck_data['total_opc'] - today_unloaded_opc)
+                if truck_number == 'HR38AB5491':
+                    app.logger.info(f"DEBUG HR38AB5491 FINAL REMAINING: remaining_ppc={remaining_ppc}, total_pending_ppc={total_pending_ppc}")
             
             # Calculate how much was unloaded for today's billing
             unloaded_for_today_ppc = truck_data['total_ppc'] - remaining_ppc
