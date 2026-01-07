@@ -3417,13 +3417,6 @@ def get_consolidated_vehicles():
             
             # Add if there's positive pending material OR if there's unloading on selected date
             if pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01 or has_unloading_today:
-                    # For vehicles with billing before selected_date, use the pending from daily_vehicle_pending
-                    # This is the authoritative source that already has correct FIFO calculations
-                    # Store it for use in remaining calculation later
-                    daily_pending_ppc = pending_ppc
-                    daily_pending_premium = pending_premium
-                    daily_pending_opc = pending_opc
-                    
                     # Get all billing info for this truck in current month (sorted by date ASC for FIFO)
                     # Include both sales_data and other_dealers_billing
                     cursor.execute('''
@@ -3788,11 +3781,7 @@ def get_consolidated_vehicles():
                                         'cumulative_unloaded_premium': cumulative_premium,
                                         'cumulative_unloaded_opc': cumulative_opc,
                                         'card_pending_premium': card_pending_premium,
-                                        'card_pending_opc': card_pending_opc,
-                                        # Store daily_vehicle_pending values as authoritative remaining
-                                        'daily_pending_ppc': daily_pending_ppc,
-                                        'daily_pending_premium': daily_pending_premium,
-                                        'daily_pending_opc': daily_pending_opc
+                                        'card_pending_opc': card_pending_opc
                                     }
         
         # Don't assign unloading yet - need to wait for opening balance cards to be created first
@@ -4065,16 +4054,11 @@ def get_consolidated_vehicles():
                 today_unloaded_premium = sum(u.get('premium_unloaded', 0) for u in truck_data.get('unloading_details', []))
                 today_unloaded_opc = sum(u.get('opc_unloaded', 0) for u in truck_data.get('unloading_details', []))
                 
-                # Use daily_vehicle_pending value if available (most accurate)
-                if 'daily_pending_ppc' in truck_data:
-                    remaining_ppc = truck_data['daily_pending_ppc']
-                    remaining_premium = truck_data.get('daily_pending_premium', 0)
-                    remaining_opc = truck_data.get('daily_pending_opc', 0)
-                    
-                    if truck_number == 'HR38AB5491':
-                        app.logger.info(f"DEBUG HR38AB5491 USING DAILY_PENDING: remaining_ppc={remaining_ppc}")
+                # For Prev Day cards, calculate remaining as: Total Billed - Unloading Shown on Card
+                # Don't use daily_vehicle_pending because it accounts for ALL unloading,
+                # but the card only shows partial unloading (today's unloading)
                 # PPC
-                elif card_pending_ppc_val < 0.01:
+                if card_pending_ppc_val < 0.01:
                     # FIFO determined 0 pending for PPC
                     remaining_ppc = 0
                 elif truck_data.get('total_ppc', 0) > card_pending_ppc_val + 0.01:
