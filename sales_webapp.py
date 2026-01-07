@@ -3732,14 +3732,32 @@ def get_consolidated_vehicles():
                                 has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
                                 
                                 # Check if there's unloading on selected date that's within this card's unloading_end_date
-                                # This ensures we only show cards that have unloading attributed to them on the selected date
+                                # AND matches the card's product types (to avoid showing unloading for different products)
                                 has_unloading_on_selected_date = False
                                 if selected_date <= unloading_end_date:
+                                    # Check if there's unloading for the same product types as this card
+                                    # Card has PPC if total_ppc > 0, etc.
+                                    card_has_ppc = sum(inv[5] or 0 for inv in billing_rows) > 0
+                                    card_has_premium = sum(inv[6] or 0 for inv in billing_rows) > 0
+                                    card_has_opc = sum(inv[7] or 0 for inv in billing_rows) > 0
+                                    
                                     cursor.execute('''
-                                        SELECT COUNT(*) FROM vehicle_unloading
+                                        SELECT ppc_unloaded, premium_unloaded, opc_unloaded
+                                        FROM vehicle_unloading
                                         WHERE truck_number = ? AND unloading_date = ?
                                     ''', (truck_number, selected_date))
-                                    has_unloading_on_selected_date = cursor.fetchone()[0] > 0
+                                    unloading_row = cursor.fetchone()
+                                    if unloading_row:
+                                        unloaded_ppc_today = unloading_row[0] or 0
+                                        unloaded_premium_today = unloading_row[1] or 0
+                                        unloaded_opc_today = unloading_row[2] or 0
+                                        
+                                        # Check if there's unloading for the same product types as the card
+                                        has_unloading_on_selected_date = (
+                                            (card_has_ppc and unloaded_ppc_today > 0) or
+                                            (card_has_premium and unloaded_premium_today > 0) or
+                                            (card_has_opc and unloaded_opc_today > 0)
+                                        )
                                 
                                 if not has_any_pending and not has_unloading_on_selected_date:
                                     continue  # Skip this card - no pending material and no unloading attributed to this card today
