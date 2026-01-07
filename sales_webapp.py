@@ -3796,13 +3796,16 @@ def get_consolidated_vehicles():
                                 cumulative_opc = unloaded_opc
                                 
                                 # Query 2: Get unloading ONLY on selected date for display
-                                # Show only today's unloading, not historical unloading
-                                cursor.execute('''
-                                    SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
-                                    FROM vehicle_unloading
-                                    WHERE truck_number = ? AND unloading_date = ?
-                                    ORDER BY unloading_date ASC
-                                ''', (truck_number, selected_date))
+                                # But only if selected_date is within this card's unloading range
+                                historical_unloading = []
+                                if selected_date <= unloading_end_date:
+                                    cursor.execute('''
+                                        SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
+                                        FROM vehicle_unloading
+                                        WHERE truck_number = ? AND unloading_date = ?
+                                        ORDER BY unloading_date ASC
+                                    ''', (truck_number, selected_date))
+                                    historical_unloading = cursor.fetchall()
                                 
                                 historical_unloading = cursor.fetchall()
                                 
