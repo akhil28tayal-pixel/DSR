@@ -3536,8 +3536,9 @@ def get_consolidated_vehicles():
                                 (card_has_opc and next_has_opc)
                             )
                         
-                        # Always include all unloading up to selected_date for FIFO calculation
-                        # FIFO means unloading consumes oldest billing first, regardless of new billing
+                        # Always use FIFO: unloading consumes oldest billing first
+                        # This applies even when there's new billing on the same day
+                        # The unloading happens before new billing is considered
                         unloading_end_date = selected_date
                         
                         if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
