@@ -3807,8 +3807,6 @@ def get_consolidated_vehicles():
                                     ''', (truck_number, selected_date))
                                     historical_unloading = cursor.fetchall()
                                 
-                                historical_unloading = cursor.fetchall()
-                                
                                 # Always process unloading if it exists, regardless of pending status
                                 # This ensures cards with 0 pending but with unloading today are shown
                                 if historical_unloading:
