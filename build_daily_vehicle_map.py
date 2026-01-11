@@ -105,11 +105,22 @@ def build_daily_map():
         
         # Get today's billing (sales_data)
         # Exclude cancelled transactions (negative quantities)
+        # Also exclude transactions that have been cancelled (have a matching negative transaction)
         cursor.execute("""
             SELECT truck_number, dealer_code, 
                    SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
             FROM sales_data
             WHERE sale_date = ? AND total_quantity > 0
+            AND invoice_number NOT IN (
+                -- Exclude invoices that have been cancelled
+                SELECT s1.invoice_number
+                FROM sales_data s1
+                JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                    AND s1.dealer_name = s2.dealer_name
+                    AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                    AND s1.total_quantity > 0 
+                    AND s2.total_quantity < 0
+            )
             GROUP BY truck_number, dealer_code
         """, (date,))
         
