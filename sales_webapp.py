@@ -3767,8 +3767,7 @@ def get_consolidated_vehicles():
                                     trucks_today[existing_card_key]['total_quantity'] += card_pending_ppc + card_pending_premium + card_pending_opc
                                     trucks_today[existing_card_key]['total_value'] += total_val
                                     for dc in dealer_codes_set:
-                                        if dc not in trucks_today[existing_card_key]['dealer_codes']:
-                                            trucks_today[existing_card_key]['dealer_codes'].append(dc)
+                                        trucks_today[existing_card_key]['dealer_codes'].add(dc)
                                     # Update card pending amounts - include BOTH earlier pending AND today's billing
                                     # Today's billing is also pending since it hasn't been unloaded yet
                                     existing_today_ppc = trucks_today[existing_card_key].get('total_ppc', 0) - card_pending_ppc  # Today's billing before merge
