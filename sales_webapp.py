@@ -3803,12 +3803,13 @@ def get_consolidated_vehicles():
                                     card_has_premium = sum(inv[6] or 0 for inv in billing_rows) > 0
                                     card_has_opc = sum(inv[7] or 0 for inv in billing_rows) > 0
                                     
-                                    # Check unloading for this specific plant_depot to avoid cross-attribution
+                                    # Check unloading on selected date (any plant_depot)
+                                    # Note: Unloading plant_depot may not match billing plant_depot due to data entry
                                     cursor.execute('''
                                         SELECT ppc_unloaded, premium_unloaded, opc_unloaded
                                         FROM vehicle_unloading
-                                        WHERE truck_number = ? AND unloading_date = ? AND plant_depot = ?
-                                    ''', (truck_number, selected_date, plant_depot))
+                                        WHERE truck_number = ? AND unloading_date = ?
+                                    ''', (truck_number, selected_date))
                                     unloading_row = cursor.fetchone()
                                     if unloading_row:
                                         unloaded_ppc_today = unloading_row[0] or 0
