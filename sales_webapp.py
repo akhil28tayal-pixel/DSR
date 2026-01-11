@@ -2884,6 +2884,7 @@ def get_consolidated_vehicles():
         
         # Get all invoices for the selected date grouped by truck
         # Exclude cancelled transactions (negative quantities)
+        # Also exclude transactions that have been cancelled (have a matching negative transaction)
         cursor.execute('''
             SELECT truck_number, invoice_number, dealer_code, dealer_name,
                    ppc_quantity, premium_quantity, opc_quantity, total_quantity,
@@ -2892,8 +2893,19 @@ def get_consolidated_vehicles():
             FROM sales_data 
             WHERE sale_date = ? AND truck_number IS NOT NULL AND truck_number != ''
             AND total_quantity > 0
+            AND invoice_number NOT IN (
+                -- Exclude invoices that have been cancelled
+                SELECT s1.invoice_number
+                FROM sales_data s1
+                JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                    AND s1.dealer_name = s2.dealer_name
+                    AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                    AND s1.total_quantity > 0 
+                    AND s2.total_quantity < 0
+                WHERE s1.sale_date = ?
+            )
             ORDER BY truck_number, dealer_name
-        ''', (selected_date,))
+        ''', (selected_date, selected_date))
         
         invoices_data = cursor.fetchall()
         
@@ -2965,6 +2977,7 @@ def get_consolidated_vehicles():
             placeholders = ','.join(['?' for _ in truck_numbers_today])
             # Include both sales_data and other_dealers_billing for previous billings
             # Exclude cancelled transactions (negative quantities)
+            # Also exclude transactions that have been cancelled (have a matching negative transaction)
             cursor.execute(f'''
                 SELECT truck_number, sale_date, 
                        SUM(ppc) as ppc, SUM(premium) as premium, 
@@ -2979,6 +2992,16 @@ def get_consolidated_vehicles():
                     WHERE truck_number IN ({placeholders}) 
                       AND sale_date >= ? AND sale_date < ?
                       AND total_quantity > 0
+                      AND invoice_number NOT IN (
+                          -- Exclude invoices that have been cancelled
+                          SELECT s1.invoice_number
+                          FROM sales_data s1
+                          JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                              AND s1.dealer_name = s2.dealer_name
+                              AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                              AND s1.total_quantity > 0 
+                              AND s2.total_quantity < 0
+                      )
                     UNION ALL
                     SELECT truck_number, sale_date, 
                            ppc_quantity as ppc, premium_quantity as premium, 
@@ -3443,6 +3466,7 @@ def get_consolidated_vehicles():
                     # Get all billing info for this truck in current month (sorted by date ASC for FIFO)
                     # Include both sales_data and other_dealers_billing
                     # Exclude cancelled transactions (negative quantities)
+                    # Also exclude transactions that have been cancelled (have a matching negative transaction)
                     cursor.execute('''
                         SELECT invoice_number, dealer_code, dealer_name, plant_depot, sale_date,
                                ppc_quantity, premium_quantity, opc_quantity, total_quantity,
@@ -3451,6 +3475,17 @@ def get_consolidated_vehicles():
                         FROM sales_data
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                         AND total_quantity > 0
+                        AND invoice_number NOT IN (
+                            -- Exclude invoices that have been cancelled
+                            SELECT s1.invoice_number
+                            FROM sales_data s1
+                            JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                                AND s1.dealer_name = s2.dealer_name
+                                AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                                AND s1.total_quantity > 0 
+                                AND s2.total_quantity < 0
+                            WHERE s1.truck_number = ?
+                        )
                         UNION ALL
                         SELECT 'OTHER' as invoice_number, '' as dealer_code, dealer_name, 
                                CASE WHEN plant_depot = 'Plant' OR plant_depot = 'PLANT' THEN 'PLANT' ELSE 'DEPOT' END as plant_depot, 
@@ -3461,7 +3496,7 @@ def get_consolidated_vehicles():
                         FROM other_dealers_billing
                         WHERE truck_number = ? AND sale_date >= ? AND sale_date < ?
                         ORDER BY sale_date ASC
-                    ''', (truck_number, month_start, selected_date, truck_number, month_start, selected_date))
+                    ''', (truck_number, month_start, selected_date, truck_number, truck_number, month_start, selected_date))
                     billing_rows = cursor.fetchall()
                     
                     if billing_rows:
