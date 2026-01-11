@@ -2883,6 +2883,7 @@ def get_consolidated_vehicles():
         cursor = db.conn.cursor()
         
         # Get all invoices for the selected date grouped by truck
+        # Exclude cancelled transactions (negative quantities)
         cursor.execute('''
             SELECT truck_number, invoice_number, dealer_code, dealer_name,
                    ppc_quantity, premium_quantity, opc_quantity, total_quantity,
@@ -2890,6 +2891,7 @@ def get_consolidated_vehicles():
                    plant_depot, sale_date, plant_description
             FROM sales_data 
             WHERE sale_date = ? AND truck_number IS NOT NULL AND truck_number != ''
+            AND total_quantity > 0
             ORDER BY truck_number, dealer_name
         ''', (selected_date,))
         
@@ -2962,6 +2964,7 @@ def get_consolidated_vehicles():
         if truck_numbers_today:
             placeholders = ','.join(['?' for _ in truck_numbers_today])
             # Include both sales_data and other_dealers_billing for previous billings
+            # Exclude cancelled transactions (negative quantities)
             cursor.execute(f'''
                 SELECT truck_number, sale_date, 
                        SUM(ppc) as ppc, SUM(premium) as premium, 
@@ -2975,6 +2978,7 @@ def get_consolidated_vehicles():
                     FROM sales_data 
                     WHERE truck_number IN ({placeholders}) 
                       AND sale_date >= ? AND sale_date < ?
+                      AND total_quantity > 0
                     UNION ALL
                     SELECT truck_number, sale_date, 
                            ppc_quantity as ppc, premium_quantity as premium, 
