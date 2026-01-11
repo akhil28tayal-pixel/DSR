@@ -104,11 +104,12 @@ def build_daily_map():
                 }
         
         # Get today's billing (sales_data)
+        # Exclude cancelled transactions (negative quantities)
         cursor.execute("""
             SELECT truck_number, dealer_code, 
                    SUM(ppc_quantity), SUM(premium_quantity), SUM(opc_quantity)
             FROM sales_data
-            WHERE sale_date = ?
+            WHERE sale_date = ? AND total_quantity > 0
             GROUP BY truck_number, dealer_code
         """, (date,))
         
