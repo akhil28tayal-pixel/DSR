@@ -113,6 +113,7 @@ def build_daily_map():
             WHERE sale_date = ? AND total_quantity > 0
             AND invoice_number NOT IN (
                 -- Exclude invoices that have been cancelled
+                -- Only match cancellations from the same month to avoid incorrect matches
                 SELECT s1.invoice_number
                 FROM sales_data s1
                 JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
@@ -120,6 +121,7 @@ def build_daily_map():
                     AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
                     AND s1.total_quantity > 0 
                     AND s2.total_quantity < 0
+                    AND substr(s1.sale_date, 1, 7) = substr(s2.sale_date, 1, 7)
             )
             GROUP BY truck_number, dealer_code
         """, (date,))

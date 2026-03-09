@@ -1551,7 +1551,7 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
                     'opc': prev_row[2] or 0
                 }
             
-            # Get previous month's billed
+            # Get previous month's billed (excluding cancelled transactions)
             if not is_other_dealer:
                 if dealer_code:
                     cursor.execute('''
@@ -1560,6 +1560,17 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
                                COALESCE(SUM(opc_quantity), 0)
                         FROM sales_data 
                         WHERE dealer_code = ? AND sale_date >= ? AND sale_date < ?
+                        AND total_quantity > 0
+                        AND invoice_number NOT IN (
+                            SELECT s1.invoice_number
+                            FROM sales_data s1
+                            JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                                AND s1.dealer_name = s2.dealer_name
+                                AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                                AND s1.total_quantity > 0 
+                                AND s2.total_quantity < 0
+                                AND substr(s1.sale_date, 1, 7) = substr(s2.sale_date, 1, 7)
+                        )
                     ''', (dealer_code, prev_month_start, prev_month_end))
                 else:
                     cursor.execute('''
@@ -1568,6 +1579,17 @@ def get_dealer_opening_balance(cursor, dealer_name, before_date, is_other_dealer
                                COALESCE(SUM(opc_quantity), 0)
                         FROM sales_data 
                         WHERE dealer_name = ? AND sale_date >= ? AND sale_date < ?
+                        AND total_quantity > 0
+                        AND invoice_number NOT IN (
+                            SELECT s1.invoice_number
+                            FROM sales_data s1
+                            JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                                AND s1.dealer_name = s2.dealer_name
+                                AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                                AND s1.total_quantity > 0 
+                                AND s2.total_quantity < 0
+                                AND substr(s1.sale_date, 1, 7) = substr(s2.sale_date, 1, 7)
+                        )
                     ''', (dealer_name, prev_month_start, prev_month_end))
             else:
                 cursor.execute('''
@@ -2069,8 +2091,32 @@ def get_dealer_balance():
                     'is_other': True
                 }
         
+        # 5. Get dealers from opening_material_balance for previous month (to include dealers with closing balance but no current month activity)
+        cursor.execute('''
+            SELECT dealer_code, dealer_name, dealer_type
+            FROM opening_material_balance 
+            WHERE month_year = ?
+        ''', (prev_month_year,))
+        for row in cursor.fetchall():
+            dealer_code = str(row[0]) if row[0] else None
+            dealer_name = row[1]
+            is_other = row[2] == 'Other' if row[2] else False
+            
+            # Use dealer_code as key for regular dealers, dealer_name for other dealers
+            if is_other or not dealer_code or dealer_code == 'OTHER':
+                dealer_key = dealer_name
+            else:
+                dealer_key = dealer_code
+            
+            if dealer_key not in all_dealers:
+                all_dealers[dealer_key] = {
+                    'dealer_name': dealer_name,
+                    'is_other': is_other
+                }
+        
         # Get billed quantities by dealer from sales_data for selected date only
         # (opening balance already includes cumulative before this date)
+        # Exclude cancelled transactions to match vehicle pending calculation
         cursor.execute('''
             SELECT dealer_code, dealer_name,
                    SUM(ppc_quantity) as ppc,
@@ -2078,7 +2124,19 @@ def get_dealer_balance():
                    SUM(opc_quantity) as opc,
                    SUM(total_quantity) as total
             FROM sales_data 
-            WHERE sale_date = ?
+            WHERE sale_date = ? AND total_quantity > 0
+            AND invoice_number NOT IN (
+                -- Exclude invoices that have been cancelled
+                -- Only match cancellations from the same month to avoid incorrect matches
+                SELECT s1.invoice_number
+                FROM sales_data s1
+                JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
+                    AND s1.dealer_name = s2.dealer_name
+                    AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
+                    AND s1.total_quantity > 0 
+                    AND s2.total_quantity < 0
+                    AND substr(s1.sale_date, 1, 7) = substr(s2.sale_date, 1, 7)
+            )
             GROUP BY dealer_code, dealer_name
         ''', (selected_date,))
         
@@ -2189,7 +2247,7 @@ def get_dealer_balance():
             
             # Only include dealers with non-zero closing balance OR activity today
             has_activity = billed['total'] > 0 or unloaded['total'] > 0
-            has_balance = abs(closing_total) > 0.01
+            has_balance = abs(closing_total) > 0.01 or abs(closing_ppc) > 0.01 or abs(closing_premium) > 0.01 or abs(closing_opc) > 0.01
             
             if has_activity or has_balance:
                 if is_other:
@@ -2895,6 +2953,7 @@ def get_consolidated_vehicles():
             AND total_quantity > 0
             AND invoice_number NOT IN (
                 -- Exclude invoices that have been cancelled
+                -- Only match cancellations from the same month to avoid incorrect matches
                 SELECT s1.invoice_number
                 FROM sales_data s1
                 JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
@@ -2902,6 +2961,7 @@ def get_consolidated_vehicles():
                     AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
                     AND s1.total_quantity > 0 
                     AND s2.total_quantity < 0
+                    AND substr(s1.sale_date, 1, 7) = substr(s2.sale_date, 1, 7)
                 WHERE s1.sale_date = ?
             )
             ORDER BY truck_number, dealer_name
@@ -2994,6 +3054,7 @@ def get_consolidated_vehicles():
                       AND total_quantity > 0
                       AND invoice_number NOT IN (
                           -- Exclude invoices that have been cancelled
+                          -- Only match cancellations from the same month to avoid incorrect matches
                           SELECT s1.invoice_number
                           FROM sales_data s1
                           JOIN sales_data s2 ON s1.truck_number = s2.truck_number 
@@ -3001,6 +3062,7 @@ def get_consolidated_vehicles():
                               AND ABS(s1.total_quantity + s2.total_quantity) < 0.01
                               AND s1.total_quantity > 0 
                               AND s2.total_quantity < 0
+                              AND substr(s1.sale_date, 1, 7) = substr(s2.sale_date, 1, 7)
                       )
                     UNION ALL
                     SELECT truck_number, sale_date, 
@@ -3314,6 +3376,9 @@ def get_consolidated_vehicles():
                         # Get IDs of unloading assigned to opening card
                         for u in v.get('unloading_details', []):
                             opening_card_unloading_ids.add(u.get('id'))
+                        
+                        if truck_number == 'UP14KT0052':
+                            app.logger.info(f"DEBUG {truck_number} OPENING CARD: has_opening_card={has_opening_card}, opening_card_unloading_ids={opening_card_unloading_ids}")
                         break
                 
                 # If this card is today's billing and there's a pending/opening card, assign unloading
@@ -3326,6 +3391,12 @@ def get_consolidated_vehicles():
                         # Get the IDs of unloading records assigned to the pending card
                         pending_card_unloading_ids = set(u.get('id') for u in pending_card.get('unloading_details', []))
                         excluded_unloading_ids.update(pending_card_unloading_ids)
+                        
+                        if truck_number == 'UP14KT0052':
+                            app.logger.info(f"DEBUG {truck_number} PENDING CARD: pending_card_key={pending_card_key}, pending_card_unloading_count={len(pending_card.get('unloading_details', []))}, pending_card_unloading_ids={pending_card_unloading_ids}")
+                    
+                    if truck_number == 'UP14KT0052':
+                        app.logger.info(f"DEBUG {truck_number} UNLOADING ASSIGN: card_key={card_key}, all_unloading_count={len(all_unloading)}, excluded_ids={excluded_unloading_ids}")
                     
                     # For Today cards, only assign unloading NOT already assigned to pending/opening cards
                     # This implements FIFO: opening balance consumes unloading first
@@ -3334,6 +3405,9 @@ def get_consolidated_vehicles():
                         # Only include unloading NOT already assigned to pending/opening card
                         if unload.get('id') not in excluded_unloading_ids:
                             today_card_unloading.append(transform_unloading_record(unload))
+                    
+                    if truck_number == 'UP14KT0052':
+                        app.logger.info(f"DEBUG {truck_number} UNLOADING ASSIGNED: today_card_unloading_count={len(today_card_unloading)}")
                     
                     truck_data['unloading_details'] = today_card_unloading
                 # If this truck has only one card, show ALL unloading for the truck
@@ -3397,10 +3471,16 @@ def get_consolidated_vehicles():
             if truck_number not in earlier_billed_trucks:
                 earlier_billed_trucks.append(truck_number)
         
+        if 'UP14KT0052' in earlier_billed_trucks:
+            app.logger.info(f"DEBUG UP14KT0052 is in earlier_billed_trucks list")
+        
         for truck_number in earlier_billed_trucks:
             # For trucks NOT billed today: show all pending as a card
             # For trucks billed today: add pending from earlier to the existing card
             is_billed_today = truck_number in actual_trucks_billed_today
+            
+            if truck_number == 'UP14KT0052':
+                app.logger.info(f"DEBUG {truck_number} EARLIER BILLED: is_billed_today={is_billed_today}")
             
             # Get pending balance from daily_vehicle_pending for the selected date
             # This is the authoritative source for pending amounts (uses FIFO logic)
@@ -3624,10 +3704,10 @@ def get_consolidated_vehicles():
                             # No same-day billing with same products - always include selected_date
                             unloading_end_date = selected_date
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
-                            app.logger.info(f"DEBUG {truck_number}: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562', 'UP14KT0052']:
+                            app.logger.info(f"DEBUG {truck_number} PREV DAY: selected_date={selected_date}, first_billing_date={first_billing_date}, last_billing_date={last_billing_date}, next_billing_date={next_billing_date}, unloading_end_date={unloading_end_date}")
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562', 'UP14KT0052']:
                             app.logger.info(f"DEBUG {truck_number} BEFORE QUERY: first_billing_date={first_billing_date}, unloading_end_date={unloading_end_date}")
                         
                         cursor.execute('''
@@ -3640,7 +3720,7 @@ def get_consolidated_vehicles():
                         
                         unloaded_ppc = card_unloaded[0] or 0
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562', 'UP14KT0052']:
                             app.logger.info(f"DEBUG {truck_number} AFTER QUERY: unloaded_ppc={unloaded_ppc}")
                         unloaded_premium = card_unloaded[1] or 0
                         unloaded_opc = card_unloaded[2] or 0
@@ -3654,7 +3734,7 @@ def get_consolidated_vehicles():
                         remaining_to_consume_premium = unloaded_premium - consume_from_opening_premium
                         remaining_to_consume_opc = unloaded_opc - consume_from_opening_opc
                         
-                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562']:
+                        if truck_number in ['HR38AB5491', 'HR38AB3916', 'HR55AZ1569', 'DL01LA0649', 'HR58C8562', 'UP14KT0052']:
                             app.logger.info(f"DEBUG {truck_number} FIFO: fifo_opening_ppc={fifo_opening_ppc}, unloaded_ppc={unloaded_ppc}, remaining_to_consume_ppc={remaining_to_consume_ppc}")
                         
                         # Now consume invoices in FIFO order (by date) until we've consumed enough
@@ -3828,10 +3908,25 @@ def get_consolidated_vehicles():
                                 # Show cards only if: (1) has pending material OR (2) has unloading on selected date that's within this card's date range
                                 has_any_pending = card_pending_ppc > 0.01 or card_pending_premium > 0.01 or card_pending_opc > 0.01
                                 
+                                # BUG FIX: If truck is billed today AND previous billing is fully consumed (pending = 0),
+                                # skip creating Prev Day card (today's unloading belongs to today's billing)
+                                truck_billed_today = truck_number in actual_trucks_billed_today
+                                prev_fully_consumed = not has_any_pending
+                                
+                                if truck_number == 'UP14KT0052':
+                                    app.logger.info(f"DEBUG {truck_number} FIFO PREV DAY CHECK: has_any_pending={has_any_pending}, truck_billed_today={truck_billed_today}, prev_fully_consumed={prev_fully_consumed}")
+                                
+                                if truck_billed_today and prev_fully_consumed:
+                                    if truck_number == 'UP14KT0052':
+                                        app.logger.info(f"DEBUG {truck_number} SKIP FIFO PREV DAY CARD")
+                                    continue  # Skip this Prev Day card
+                                
                                 # Check if there's unloading on selected date that's within this card's unloading_end_date
                                 # AND matches the card's product types (to avoid showing unloading for different products)
                                 has_unloading_on_selected_date = False
                                 if selected_date <= unloading_end_date:
+                                    if truck_number == 'UP14KT0052':
+                                        app.logger.info(f"DEBUG {truck_number} CHECKING UNLOADING: selected_date <= unloading_end_date is TRUE")
                                     # Check if there's unloading for the same product types as this card
                                     # Card has PPC if total_ppc > 0, etc.
                                     card_has_ppc = sum(inv[5] or 0 for inv in billing_rows) > 0
@@ -3858,6 +3953,9 @@ def get_consolidated_vehicles():
                                             (card_has_opc and unloaded_opc_today > 0)
                                         )
                                 
+                                if truck_number == 'UP14KT0052':
+                                    app.logger.info(f"DEBUG {truck_number} CARD DECISION: has_any_pending={has_any_pending}, has_unloading_on_selected_date={has_unloading_on_selected_date}, will_skip={not has_any_pending and not has_unloading_on_selected_date}")
+                                
                                 if not has_any_pending and not has_unloading_on_selected_date:
                                     continue  # Skip this card - no pending material and no unloading attributed to this card today
                                 
@@ -3878,7 +3976,16 @@ def get_consolidated_vehicles():
                                 # Query 2: Get unloading ONLY on selected date for display
                                 # But only if selected_date is within this card's unloading range
                                 historical_unloading = []
+                                
+                                if truck_number == 'UP14KT0052':
+                                    app.logger.info(f"DEBUG {truck_number} BEFORE UNLOADING QUERY: selected_date='{selected_date}' (type={type(selected_date).__name__}), unloading_end_date='{unloading_end_date}' (type={type(unloading_end_date).__name__}), check={selected_date <= unloading_end_date}")
+                                    app.logger.info(f"DEBUG {truck_number} COMPARISON: '{selected_date}' <= '{unloading_end_date}' = {selected_date <= unloading_end_date}")
+                                
+                                # BUG FIX: The check should prevent adding Feb 14 unloading to Feb 12 card
+                                # when unloading_end_date is Feb 13
                                 if selected_date <= unloading_end_date:
+                                    if truck_number == 'UP14KT0052':
+                                        app.logger.info(f"DEBUG {truck_number} QUERYING UNLOADING for {selected_date}")
                                     cursor.execute('''
                                         SELECT id, dealer_code, unloading_dealer, unloading_point, ppc_unloaded, premium_unloaded, opc_unloaded, unloading_date
                                         FROM vehicle_unloading
@@ -3886,6 +3993,9 @@ def get_consolidated_vehicles():
                                         ORDER BY unloading_date ASC
                                     ''', (truck_number, selected_date))
                                     historical_unloading = cursor.fetchall()
+                                
+                                if truck_number == 'UP14KT0052':
+                                    app.logger.info(f"DEBUG {truck_number} AFTER UNLOADING QUERY: historical_count={len(historical_unloading)}")
                                 
                                 # Always process unloading if it exists, regardless of pending status
                                 # This ensures cards with 0 pending but with unloading today are shown
@@ -4880,6 +4990,18 @@ def get_consolidated_vehicles():
                 # Use FIFO-calculated pending values
                 # pending_ppc, pending_premium, pending_opc were calculated above using FIFO
                 has_pending_material = (pending_ppc > 0.01 or pending_premium > 0.01 or pending_opc > 0.01)
+                
+                # BUG FIX: If this vehicle is billed today AND previous billing is fully consumed (pending = 0),
+                # don't create a Prev Day card showing today's unloading (it belongs to today's billing)
+                # This implements FIFO: same-day unloading goes to same-day billing when previous is fully consumed
+                truck_billed_today = truck_number in actual_trucks_billed_today
+                prev_fully_consumed = not has_pending_material  # pending = 0
+                
+                # Skip creating Prev Day card if truck is billed today and previous billing is fully consumed
+                if truck_billed_today and prev_fully_consumed:
+                    if truck_number == 'UP14KT0052':
+                        app.logger.info(f"DEBUG {truck_number} SKIP PREV DAY CARD: truck_billed_today={truck_billed_today}, prev_fully_consumed={prev_fully_consumed}")
+                    continue  # Skip this Prev Day card
                 
                 # Show if there's pending material OR unloading on selected date for this billing
                 if has_pending_material or has_unloading_for_this_billing:
