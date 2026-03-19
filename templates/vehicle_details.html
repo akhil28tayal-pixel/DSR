@@ -1040,13 +1040,20 @@
                                         <h6 class="fw-bold mb-2"><i class="bi bi-building me-1"></i>Other Dealer Billing</h6>
                                         ${vehicle.other_billing && vehicle.other_billing.length > 0 ? `
                                             <table class="table table-sm mini-table">
-                                                <thead><tr><th>Dealer</th><th class="text-end">Qty</th><th class="text-end">Value</th></tr></thead>
+                                                <thead><tr><th>Dealer</th><th class="text-end">Qty</th><th class="text-end">Value</th><th></th></tr></thead>
                                                 <tbody>
                                                     ${vehicle.other_billing.map(ob => `
                                                         <tr>
                                                             <td>${ob.dealer_name}</td>
                                                             <td class="text-end">${ob.total_quantity.toFixed(2)} MT</td>
                                                             <td class="text-end">₹${ob.total_value.toLocaleString('en-IN')}</td>
+                                                            <td class="text-center">
+                                                                <button class="btn btn-sm btn-outline-danger py-0 px-1" 
+                                                                    onclick="deleteOtherBilling(${ob.id}, '${ob.dealer_name}', ${ob.total_quantity})"
+                                                                    title="Delete other dealer billing">
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
+                                                            </td>
                                                         </tr>
                                                     `).join('')}
                                                 </tbody>
@@ -1430,6 +1437,31 @@
             } catch (error) {
                 console.error('Error deleting unloading:', error);
                 alert('Error deleting unloading');
+            }
+        }
+        
+        // Delete other dealer billing record
+        async function deleteOtherBilling(billingId, dealerName, quantity) {
+            if (!confirm(`Are you sure you want to delete other dealer billing of ${quantity.toFixed(2)} MT for ${dealerName}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/delete_other_dealer_billing/${billingId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(data.message || 'Other dealer billing deleted successfully!');
+                    loadVehicles(); // Refresh the list
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to delete other dealer billing'));
+                }
+            } catch (error) {
+                console.error('Error deleting other dealer billing:', error);
+                alert('Error deleting other dealer billing');
             }
         }
         

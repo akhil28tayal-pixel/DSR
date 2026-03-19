@@ -5348,6 +5348,35 @@ def delete_unloading(unloading_id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/delete_other_dealer_billing/<int:billing_id>', methods=['DELETE'])
+def delete_other_dealer_billing(billing_id):
+    """Delete a specific other dealer billing record"""
+    try:
+        db = SalesCollectionsDatabase(DB_PATH)
+        cursor = db.conn.cursor()
+        
+        cursor.execute('DELETE FROM other_dealers_billing WHERE id = ?', (billing_id,))
+        db.conn.commit()
+        db.close()
+        
+        # Run pending vehicle script to update daily_vehicle_pending table
+        import subprocess
+        import os
+        script_path = os.path.join(os.path.dirname(__file__), 'build_daily_vehicle_map.py')
+        try:
+            print(f"Running pending vehicle script after other dealer billing delete: {script_path}")
+            subprocess.run(['python3', script_path], 
+                         capture_output=True, 
+                         text=True, 
+                         timeout=60)
+        except Exception as e:
+            print(f"Error running pending vehicle script: {e}")
+        
+        return jsonify({'success': True, 'message': 'Other dealer billing deleted'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 # ============== Opening Material Balance Management ==============
 
 @app.route('/opening_material_balance')
